@@ -16,3 +16,10 @@
 Cloud TTS (ключ в `GOOGLE_TTS_KEY`), зависимость edge-tts убрана. Голоса:
 Aoede/Charon для ru-RU и ro-RO. Тест `tests/run.sh` — 21/21.
 Не проверено: настоящий звук и наличие ru-RU у Chirp 3 HD — нужен ключ.
+
+## 2026-10-06 — озвучка на Mac: local/book2audio.py
+
+Скрипт книга -> MP3 через OmniVoice (mlx-audio, Apple Silicon). Проверено здесь:
+разбор PDF/EPUB/TXT и нарезка на куски (--dry-run). Не проверено: сама озвучка —
+нет Mac и доступа к Hugging Face. Риск: смысл `duration_s` в mlx-audio (максимум
+или целевая длительность) выясняется первым запуском с --test.

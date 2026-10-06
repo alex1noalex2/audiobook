@@ -39,3 +39,15 @@ sh tests/run.sh
 - Сверх бесплатного лимита Google берёт деньги, жёсткого «стоп» нет — только
   оповещение бюджета в Google Cloud Billing.
 - Сканы PDF (картинки страниц) без распознавания текста не читаются.
+
+## Озвучка на своём Mac (OmniVoice, бесплатно)
+
+```
+pip3 install mlx-audio pypdf
+brew install ffmpeg
+python3 local/book2audio.py книга.pdf --test     # 3 куска: проверить звук и скорость
+python3 local/book2audio.py книга.pdf            # вся книга -> книга.mp3
+```
+
+Свой голос: `--ref голос.wav --ref-text "точный текст записи"` (10–15 секунд).
+Прерванный запуск продолжается с того же места.
