@@ -23,7 +23,7 @@ const text = await page.textContent('#text');
 ok(text.startsWith('Глава 1'), 'PDF: текст начинается с «Глава 1»');
 ok(text.includes('переносом') && !text.includes('перено-'), 'PDF: перенос слова склеен');
 ok(!/\n\s*1\s*\n/.test(text), 'PDF: номер страницы выброшен');
-ok(await page.inputValue('#voice') === 'ru-RU-SvetlanaNeural', 'PDF: язык ru → Светлана');
+ok(await page.inputValue('#voice') === 'ru-RU-Chirp3-HD-Aoede', 'PDF: язык ru → русский голос');
 const total = +(await part()).match(/из (\d+)/)[1];
 ok(total >= 2, `PDF: ${total} частей`);
 const bad = await page.evaluate(() => fetch('/api/tts', { method: 'POST', body: JSON.stringify({ text: 'x', voice: 'evil' }) }).then(r => r.status));
@@ -73,13 +73,13 @@ await page.setInputFiles('#file', S + '/ro.epub');
 await page.waitForSelector('#player:not([hidden])');
 const et = await page.textContent('#text');
 ok(et.startsWith('Capitolul unu') && !et.includes('Capitolul doi'), 'EPUB: главы в порядке spine');
-ok(await page.inputValue('#voice') === 'ro-RO-AlinaNeural', 'EPUB: язык ro → Alina');
+ok(await page.inputValue('#voice') === 'ro-RO-Chirp3-HD-Aoede', 'EPUB: язык ro → румынский голос');
 await page.waitForFunction(() => document.getElementById('status').textContent.includes('Нет интернета'), null, { timeout: 5000 });
 ok(true, 'Офлайн: понятное сообщение для нескачанной части');
 await ctx.setOffline(false);
 
 // Смена голоса — новая озвучка
-await page.selectOption('#voice', 'ro-RO-EmilNeural');
+await page.selectOption('#voice', 'ro-RO-Chirp3-HD-Charon');
 await page.waitForFunction(() => document.getElementById('status').textContent === '', null, { timeout: 5000 });
 ok((await part()).includes('скачано'), 'Смена голоса работает');
 

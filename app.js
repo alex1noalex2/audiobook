@@ -2,8 +2,8 @@ import { extractText, toChunks, detectLang } from './extract.js';
 import * as store from './store.js';
 
 const VOICES = {
-  ru: [['ru-RU-SvetlanaNeural', 'Светлана'], ['ru-RU-DmitryNeural', 'Дмитрий']],
-  ro: [['ro-RO-AlinaNeural', 'Alina'], ['ro-RO-EmilNeural', 'Emil']],
+  ru: [['ru-RU-Chirp3-HD-Aoede', 'Русский · женский'], ['ru-RU-Chirp3-HD-Charon', 'Русский · мужской']],
+  ro: [['ro-RO-Chirp3-HD-Aoede', 'Română · feminin'], ['ro-RO-Chirp3-HD-Charon', 'Română · masculin']],
 };
 const $ = id => document.getElementById(id);
 const audio = $('audio');

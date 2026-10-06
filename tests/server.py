@@ -5,7 +5,7 @@ spec = importlib.util.spec_from_file_location('tts', ROOT + '/api/tts.py')
 tts = importlib.util.module_from_spec(spec); spec.loader.exec_module(tts)
 MOCK = open(sys.argv[1], 'rb').read()
 calls = []
-async def fake(text, voice):
+def fake(text, voice):
     calls.append(voice); print('TTS', voice, len(text), flush=True); return MOCK
 tts.synth = fake
 class H(tts.handler, SimpleHTTPRequestHandler):
