@@ -43,10 +43,8 @@ sh tests/run.sh
 ## Озвучка на своём Mac (OmniVoice, бесплатно)
 
 ```
-pip3 install mlx-audio pypdf
-brew install ffmpeg
-python3 local/book2audio.py книга.pdf --test     # 3 куска: проверить звук и скорость
-python3 local/book2audio.py книга.pdf            # вся книга -> книга.mp3
+sh local/setup.sh книга.epub                       # установка + проверка на 3 кусках
+.venv/bin/python local/book2audio.py книга.epub    # вся книга -> книга.mp3
 ```
 
 Свой голос: `--ref голос.wav --ref-text "точный текст записи"` (10–15 секунд).
