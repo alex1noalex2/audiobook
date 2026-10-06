@@ -167,6 +167,36 @@ def chunk(items, max_chars):
     return chunks
 
 
+# ---------- то, что уходит в модель ----------
+def load_fixes(path):
+    """Файл поправок: «слово = как его записать», по одной строке; # — комментарий. -> [(слово, замена)]"""
+    fixes = []
+    if path and Path(path).exists():
+        for line in Path(path).read_text(encoding="utf-8").splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                word, repl = line.split("=", 1)
+                if word.strip():
+                    fixes.append((word.strip(), repl.strip()))
+    return fixes
+
+
+def speak(text, fixes=()):
+    """Текст куска для модели. Границы куска ломают озвучку: запятая в начале, многоточие
+    или обрыв без знака в конце дают лишние звуки. Разбивку на куски это не меняет."""
+    t = re.sub(r"[=_~#*-]{3,}", " ", text).strip()                      # строки-разделители
+    t = re.sub(r"^[^\w«\"“(—]+", "", t)                                 # не начинать со знака
+    t = re.sub(r"(\.\.\.|…)+\s*$", ".", t)                              # многоточие в конце -> точка
+    if re.search(r"\w$", t):
+        t += ","                                                        # оборванный кусок: пауза, а не обрыв
+    for word, repl in fixes:
+        t = re.sub(rf"(?<!\w){re.escape(word)}(?!\w)", lambda m: repl, t)
+    return t
+
+
+def text_hash(t):
+    return hashlib.sha1(t.encode()).hexdigest()[:12]
+
+
 # ---------- озвучка ----------
 SAMPLE_TEXT = ("Дорогие друзья, сегодня мы начинаем читать новую книгу. "
                "Слушайте внимательно, потому что каждое слово здесь имеет значение.")

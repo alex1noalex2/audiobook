@@ -6,6 +6,7 @@
     python3 local/book2audio_cuda.py книга.epub --ref voice_05.wav --limit 8     # проверка скорости
 """
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
@@ -27,6 +28,19 @@ def synthesize(chunks, out_dir, base, args):
 
     prompts = {b.MAIN: voice(args.ref)}
     prompts[b.SIDE] = voice(args.ref2) if args.ref2 else prompts[b.MAIN]
+    fixes = b.load_fixes(args.fixes or args.book.with_name("fixes.txt"))
+    spoken = [b.speak(t, fixes) for _, t in chunks]
+    log_file = out_dir / "spoken.json"  # какой текст ушёл в модель для готовых кусков
+    log = json.loads(log_file.read_text()) if log_file.exists() else {}
+    redo = {int(i) for i in args.redo.split(",") if i} if args.redo else set()
+    if args.redo_changed:  # у кусков, озвученных до поправок, в логе нет записи: считаем, что ушёл исходный текст
+        redo |= {i for i in range(len(chunks)) if (out_dir / f"{i:05d}.wav").exists()
+                 and log.get(str(i), b.text_hash(chunks[i][1])) != b.text_hash(spoken[i])}
+    for i in sorted(redo):  # переозвучиваемые куски и содержащие их части MP3 удаляем
+        (out_dir / f"{i:05d}.wav").unlink(missing_ok=True)
+        base.with_name(f"{base.name}_часть{i // args.part + 1:02d}.mp3").unlink(missing_ok=True)
+    if redo:
+        print(f"Переозвучить кусков: {len(redo)}")
     todo = [i for i in range(len(chunks)) if not (out_dir / f"{i:05d}.wav").exists()]
     if args.limit:
         todo = todo[:args.limit]
@@ -36,7 +50,7 @@ def synthesize(chunks, out_dir, base, args):
 
     def generate(ids):
         try:
-            return model.generate(text=[chunks[i][1] for i in ids],
+            return model.generate(text=[spoken[i] for i in ids],
                                   voice_clone_prompt=[prompts[chunks[i][0]] for i in ids], **opts)
         except RuntimeError as e:  # не хватило памяти видеокарты: делим пачку пополам
             if "out of memory" not in str(e) or len(ids) == 1:
@@ -50,6 +64,8 @@ def synthesize(chunks, out_dir, base, args):
         ids = todo[g:g + args.batch]
         for i, audio in zip(ids, generate(ids)):
             b.save_wav(out_dir / f"{i:05d}.wav", np.asarray(audio, dtype=np.float32), model.sampling_rate)
+            log[str(i)] = b.text_hash(spoken[i])
+        log_file.write_text(json.dumps(log))
         done = g + len(ids)
         per = (time.time() - started) / done
         print(f"[{done}/{len(todo)}] кусок {ids[-1] + 1}/{len(chunks)}, {per:.1f} с на кусок, "
@@ -72,6 +88,9 @@ def main():
     ap.add_argument("--part", type=int, default=100, help="кусков в одном MP3")
     ap.add_argument("--numbers", action="store_true", help="цифры -> слова (нужен num2words)")
     ap.add_argument("--limit", type=int, help="озвучить только N кусков (без склейки в MP3)")
+    ap.add_argument("--fixes", type=Path, help="файл поправок «слово = замена» (по умолчанию fixes.txt рядом с книгой)")
+    ap.add_argument("--redo", help="номера кусков через запятую, которые переозвучить: 102,540")
+    ap.add_argument("--redo-changed", action="store_true", help="переозвучить куски, текст которых для модели изменился")
     args = ap.parse_args()
 
     chunks = b.chunk([(r, b.clean(t, args.numbers)) for r, t in b.read_book(args.book)], args.max_chars)
