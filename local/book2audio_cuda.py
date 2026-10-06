@@ -7,6 +7,7 @@
 """
 import argparse
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -44,6 +45,10 @@ def synthesize(chunks, out_dir, base, args):
     todo = [i for i in range(len(chunks)) if not (out_dir / f"{i:05d}.wav").exists()]
     if args.limit:
         todo = todo[:args.limit]
+    for i in [i for i in todo if not re.search(r"[А-Яа-яЁё]", spoken[i])]:  # нечего читать (адрес, ссылка): тишина
+        b.save_wav(out_dir / f"{i:05d}.wav", np.zeros(int(0.3 * model.sampling_rate), np.float32), model.sampling_rate)
+        log[str(i)] = b.text_hash(spoken[i])
+        todo.remove(i)
     opts = dict(language="ru", num_step=args.steps, guidance_scale=args.guidance)
     if args.speed:
         opts["speed"] = args.speed
