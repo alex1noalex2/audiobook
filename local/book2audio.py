@@ -20,6 +20,9 @@ import time
 import zipfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import ru_text  # noqa: E402
+
 MODEL = "mlx-community/OmniVoice-bf16"
 MAIN, SIDE = "main", "side"          # основной голос / второй (заголовки, оглавление, примечания)
 HEADINGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
@@ -185,10 +188,11 @@ def speak(text, fixes=()):
     или обрыв без знака в конце дают лишние звуки. Разбивку на куски это не меняет."""
     t = re.sub(r"[=_~#*-]{3,}", " ", text).strip()                      # строки-разделители
     t = re.sub(r"^[^\w«\"“(—]+", "", t)                                 # не начинать со знака
-    t = re.sub(r"\(\s*[^()А-Яа-яЁё]*[A-Za-z][^()А-Яа-яЁё]*\)", " ", t)    # (Brahm), (PAUSANIAS, Attica): латиница в скобках
-    t = re.sub(r"(?:\b[A-Za-z][\w'’.\-]*[,.;]?\s+){2,}[A-Za-z][\w'’.\-]*", " ", t)  # три и больше латинских слов подряд
+    t = re.sub(r"\(\s*[^()А-Яа-яЁё]*[A-Za-z][^()А-Яа-яЁё]*\)", "\x00", t)  # (Brahm), (PAUSANIAS, Attica): латиница в скобках
+    t = re.sub(r"(?:\b[A-Za-z][\w'’.\-]*[,.;]?\s+){2,}[A-Za-z][\w'’.\-]*", "\x00", t)  # три и больше латинских слов подряд
     t = re.sub(r"\s+([,.;:!?])", r"\1", re.sub(r"\s{2,}", " ", t)).strip()
     t = re.sub(r"\b[А-ЯЁ]{3,}\b", lambda m: m[0].capitalize(), t)        # ЙАУХУ -> Йаухy: слова КАПСОМ модель читает набором звуков
+    t = ru_text.normalize(t)                                           # числа, сокращения, римские цифры, латиница -> слова
     t = re.sub(r"(\.\.\.|…)+\s*$", ".", t)                              # многоточие в конце -> точка
     if re.search(r"\w$", t):
         t += ","                                                        # оборванный кусок: пауза, а не обрыв
