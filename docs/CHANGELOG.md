@@ -54,3 +54,13 @@ Aoede/Charon для ru-RU и ro-RO. Тест `tests/run.sh` — 21/21.
 (run.json), образец голоса токенизируется один раз. Шаги по умолчанию 16.
 Проверено на подставной модели; не проверено на настоящей: generate_batch, ref_tokens
 вместо ref_audio, скорость с образцами, выигрыш от --batch и --guidance 0.
+
+## 2026-10-06 — озвучка на бесплатном GPU: local/colab.ipynb, local/book2audio_cuda.py
+
+Замер владельца на M1: ≈22 с на кусок с двумя голосами (≈12–13 ч на книгу).
+Для ускорения добавлен путь через Colab T4: оригинальная OmniVoice (pip install omnivoice),
+OmniVoice.from_pretrained(..., dtype=float16), create_voice_clone_prompt один раз на голос,
+generate(text=[...], voice_clone_prompt=[...]) пачками. Разбор книги, голоса, части MP3 и защита
+папки — общий код из book2audio.py. При нехватке памяти пачка делится пополам.
+Проверено на подставных omnivoice/torch. Не проверено: установка в Colab, реальная скорость T4,
+звучание образцов голосов, снятых с MLX-версии, в оригинальной модели.

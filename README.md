@@ -60,3 +60,10 @@ sh local/setup.sh книга.epub                       # установка + �
 слушать можно, пока озвучка идёт. Прерванный запуск продолжается с того же места.
 
 Ускорение: `--steps` (16 вдвое быстрее 32), `--guidance 0` (без CFG), `--batch N` (N кусков сразу).
+
+## Озвучка на бесплатной видеокарте (Google Colab)
+
+Блокнот `local/colab.ipynb` ([открыть в Colab](https://colab.research.google.com/github/alex1noalex2/audiobook/blob/main/local/colab.ipynb)):
+оригинальная OmniVoice на T4 в fp16, пачками (`--batch 8`), те же два голоса и части MP3.
+Книга, образцы голосов (`voice_05.wav` + `.txt`, `voice_06.wav` + `.txt`) и результат лежат на Google Диске
+в папке `audiobook`, поэтому прерванная сессия продолжается с того же места. Скрипт — `local/book2audio_cuda.py`.
