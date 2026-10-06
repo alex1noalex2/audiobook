@@ -23,16 +23,26 @@ MODEL = "mlx-community/OmniVoice-bf16"
 class _Text(html.parser.HTMLParser):
     BLOCKS = {"p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "br"}
 
+    SKIP = {"style", "script", "head"}
+
     def __init__(self):
         super().__init__()
         self.out = []
+        self.skip = 0
 
     def handle_starttag(self, tag, attrs):
-        if tag in self.BLOCKS:
+        if tag in self.SKIP:
+            self.skip += 1
+        elif tag in self.BLOCKS:
             self.out.append("\n")
 
+    def handle_endtag(self, tag):
+        if tag in self.SKIP:
+            self.skip -= 1
+
     def handle_data(self, data):
-        self.out.append(data)
+        if not self.skip:
+            self.out.append(data)
 
 
 def read_epub(path):
