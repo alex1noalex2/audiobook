@@ -3,7 +3,8 @@
 
     python3 local/book2audio.py книга.pdf                  # весь текст, стандартный голос
     python3 local/book2audio.py книга.pdf --test           # только 3 первых куска: проверить звук и скорость
-    python3 local/book2audio.py книга.pdf --ref голос.wav --ref-text "что сказано в голос.wav"
+    python3 local/book2audio.py --voices 8                 # 8 случайных голосов читают одну фразу: выбрать
+    python3 local/book2audio.py книга.pdf --ref voices/voice_03.wav   # вся книга выбранным голосом
 
 Можно прервать (Ctrl+C) и запустить снова: готовые куски пропускаются.
 """
@@ -111,6 +112,38 @@ def chunk(text, max_chars):
 
 
 # ---------- озвучка ----------
+SAMPLE_TEXT = ("Дорогие друзья, сегодня мы начинаем читать новую книгу. "
+               "Слушайте внимательно, потому что каждое слово здесь имеет значение.")
+
+
+def save_wav(path, a, sr):
+    import wave
+    import numpy as np
+    with wave.open(str(path), "wb") as f:
+        f.setnchannels(1)
+        f.setsampwidth(2)
+        f.setframerate(sr)
+        f.writeframes((np.clip(a, -1, 1) * 32767).astype(np.int16).tobytes())
+
+
+def make_voices(args):
+    """Без образца модель выбирает голос случайно для каждого куска. Здесь одну и ту же
+    фразу читают N случайных голосов: лучший берём как образец (--ref voice_03.wav)."""
+    import numpy as np
+    from mlx_audio.tts.utils import load_model
+
+    out_dir = args.out or Path("voices")
+    out_dir.mkdir(exist_ok=True)
+    model = load_model(MODEL)
+    for n in range(1, args.voices + 1):
+        r = next(model.generate(text=SAMPLE_TEXT, language="ru", num_steps=args.steps,
+                                duration_s=len(SAMPLE_TEXT) / args.chars_per_sec))
+        save_wav(out_dir / f"voice_{n:02d}.wav", tidy(np.array(r.audio), r.sample_rate), r.sample_rate)
+        (out_dir / f"voice_{n:02d}.txt").write_text(SAMPLE_TEXT, encoding="utf-8")
+        print(f"[{n}/{args.voices}] voice_{n:02d}.wav", flush=True)
+    print(f"Готово. Послушай файлы в папке {out_dir} и выбери голос: --ref {out_dir}/voice_НОМЕР.wav")
+
+
 def synthesize(chunks, out_dir, args):
     import numpy as np
     from mlx_audio.audio_io import write as audio_write
@@ -178,9 +211,10 @@ def join(out_dir, mp3):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("book", type=Path)
+    ap.add_argument("book", type=Path, nargs="?")
+    ap.add_argument("--voices", type=int, metavar="N", help="озвучить образец фразы N случайными голосами и выбрать")
     ap.add_argument("--ref", help="WAV с твоим голосом (10–15 секунд) для клонирования")
-    ap.add_argument("--ref-text", help="Что сказано в --ref (точный текст)")
+    ap.add_argument("--ref-text", help="Что сказано в --ref (по умолчанию берётся из файла рядом: voice_03.txt)")
     ap.add_argument("--max-chars", type=int, default=400, help="длина куска, символов (по умолчанию 400)")
     ap.add_argument("--steps", type=int, default=32, help="шаги модели: 16 быстрее, 32 качественнее")
     ap.add_argument("--chars-per-sec", type=float, default=13, help="сколько символов в секунду произносит голос")
@@ -191,6 +225,10 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="только разобрать книгу на куски, без озвучки")
     args = ap.parse_args()
 
+    if args.voices:
+        return make_voices(args)
+    if not args.book:
+        ap.error("укажи книгу или --voices N")
     chunks = chunk(clean(read_book(args.book), args.numbers), args.max_chars)
     if not chunks:
         sys.exit("В файле нет текста (возможно, это скан)")
@@ -200,7 +238,10 @@ def main():
             print("---", c)
         return
     if args.ref and not args.ref_text:
-        sys.exit("К --ref нужен --ref-text: точный текст из записи")
+        side = Path(args.ref).with_suffix(".txt")
+        if not side.exists():
+            sys.exit("К --ref нужен --ref-text или файл с текстом рядом (voice_03.txt)")
+        args.ref_text = side.read_text(encoding="utf-8").strip()
 
     args.limit = args.limit or (3 if args.test else None)
     out_dir = args.out or args.book.with_name(args.book.stem + "_audio")

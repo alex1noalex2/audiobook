@@ -47,5 +47,10 @@ sh local/setup.sh книга.epub                       # установка + �
 .venv/bin/python local/book2audio.py книга.epub    # вся книга -> книга.mp3
 ```
 
-Свой голос: `--ref голос.wav --ref-text "точный текст записи"` (10–15 секунд).
+Один голос на всю книгу: без образца модель берёт новый случайный голос для каждого куска.
+```
+.venv/bin/python local/book2audio.py --voices 8                       # 8 голосов читают одну фразу
+.venv/bin/python local/book2audio.py книга.epub --ref voices/voice_03.wav
+```
+Свой голос: `--ref голос.wav --ref-text "точный текст записи"` (до 10 секунд).
 Прерванный запуск продолжается с того же места.

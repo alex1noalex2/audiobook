@@ -11,7 +11,7 @@ brew install python@3.12 ffmpeg
 cd "$(dirname "$0")/.."
 python3.12 -m venv .venv
 . .venv/bin/activate
-pip install -q mlx-audio pypdf
+pip install -q mlx-audio pypdf torch torchaudio
 python local/book2audio.py "$BOOK" --test
 
 OUT="${BOOK%.*}_audio"
