@@ -118,8 +118,8 @@ def synthesize(chunks, out_dir, args):
 
     model = load_model(MODEL)
     todo = [(i, t) for i, t in enumerate(chunks) if not (out_dir / f"{i:05d}.wav").exists()]
-    if args.test:
-        todo = todo[:3]
+    if args.limit:
+        todo = todo[:args.limit]
     started = time.time()
     for n, (i, text) in enumerate(todo, 1):
         kwargs = dict(text=text, language="ru", num_steps=args.steps,
@@ -133,12 +133,46 @@ def synthesize(chunks, out_dir, args):
               f"осталось ~{per * (len(todo) - n) / 60:.0f} мин", flush=True)
 
 
+def tidy(a, sr, max_pause=0.8, keep_pause=0.5):
+    """Обрезает тишину по краям куска и сокращает долгие паузы: модель дотягивает
+    речь до заданной длины паузами. Возвращает float32 с паузой 0.35 с в конце."""
+    import numpy as np
+    hop = int(sr * 0.02)
+    n = len(a) // hop
+    loud = np.sqrt((a[:n * hop].reshape(n, hop) ** 2).mean(1)) > 0.01  # громче -40 дБ
+    if not loud.any():
+        return a
+    first, last = loud.argmax(), n - 1 - loud[::-1].argmax()
+    frames, keep, i = loud[first:last + 1], None, 0
+    keep = np.ones(len(frames), bool)
+    while i < len(frames):
+        if frames[i]:
+            i += 1
+            continue
+        j = i
+        while j < len(frames) and not frames[j]:
+            j += 1
+        if (j - i) * 0.02 > max_pause:
+            keep[i + int(keep_pause / 0.02):j] = False
+        i = j
+    body = a[first * hop:(last + 1) * hop][np.repeat(keep, hop)]
+    return np.concatenate([np.zeros(int(sr * 0.1), np.float32), body, np.zeros(int(sr * 0.35), np.float32)])
+
+
 def join(out_dir, mp3):
-    wavs = sorted(out_dir.glob("*.wav"))
-    listing = out_dir / "list.txt"
-    listing.write_text("".join(f"file '{w.resolve()}'\n" for w in wavs))
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0",
-                    "-i", str(listing), "-b:a", "64k", str(mp3)], check=True)
+    import wave
+    import numpy as np
+    wavs = sorted(out_dir.glob("[0-9]*.wav"))
+    raw = out_dir / "all.raw"
+    with raw.open("wb") as out:
+        for w in wavs:
+            with wave.open(str(w)) as f:
+                sr = f.getframerate()
+                a = np.frombuffer(f.readframes(f.getnframes()), np.int16).astype(np.float32) / 32768
+            out.write((tidy(a, sr) * 32767).astype(np.int16).tobytes())
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "s16le", "-ar", str(sr), "-ac", "1",
+                    "-i", str(raw), "-b:a", "64k", str(mp3)], check=True)
+    raw.unlink()
     print(f"Готово: {mp3} ({len(wavs)} кусков)")
 
 
@@ -151,7 +185,9 @@ def main():
     ap.add_argument("--steps", type=int, default=32, help="шаги модели: 16 быстрее, 32 качественнее")
     ap.add_argument("--chars-per-sec", type=float, default=13, help="сколько символов в секунду произносит голос")
     ap.add_argument("--numbers", action="store_true", help="цифры -> слова (нужен pip install num2words)")
-    ap.add_argument("--test", action="store_true", help="озвучить только 3 первых куска")
+    ap.add_argument("--test", action="store_true", help="то же, что --limit 3")
+    ap.add_argument("--limit", type=int, help="озвучить только N кусков (без склейки в MP3)")
+    ap.add_argument("--out", type=Path, help="папка для кусков (по умолчанию <книга>_audio рядом с книгой)")
     ap.add_argument("--dry-run", action="store_true", help="только разобрать книгу на куски, без озвучки")
     args = ap.parse_args()
 
@@ -166,10 +202,11 @@ def main():
     if args.ref and not args.ref_text:
         sys.exit("К --ref нужен --ref-text: точный текст из записи")
 
-    out_dir = args.book.with_suffix("").with_name(args.book.stem + "_audio")
+    args.limit = args.limit or (3 if args.test else None)
+    out_dir = args.out or args.book.with_name(args.book.stem + "_audio")
     out_dir.mkdir(exist_ok=True)
     synthesize(chunks, out_dir, args)
-    if not args.test:
+    if not args.limit:
         join(out_dir, args.book.with_suffix(".mp3"))
 
 
