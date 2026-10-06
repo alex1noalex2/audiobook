@@ -1,0 +1,6 @@
+node_modules/
+*.pdf
+*.epub
+*.mp3
+server.log
+package-lock.json

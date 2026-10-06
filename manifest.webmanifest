@@ -1,0 +1,9 @@
+{
+  "name": "Аудиокниги",
+  "short_name": "Аудиокниги",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#1d1b19",
+  "theme_color": "#1d1b19",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

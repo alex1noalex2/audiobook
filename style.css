@@ -1,0 +1,43 @@
+:root {
+  --bg: #f7f4ef; --fg: #1d1b19; --muted: #6f6a63; --card: #fff;
+  --line: #e4ded5; --accent: #b4532a; --accent-fg: #fff;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1d1b19; --fg: #f1ece4; --muted: #a39d94; --card: #2a2724; --line: #3a3632; --accent: #e07a4c; --accent-fg: #1d1b19; }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font: 17px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 560px; margin: 0 auto; padding: 24px 16px calc(32px + env(safe-area-inset-bottom)); }
+h1 { font-size: 28px; margin: 8px 0 16px; }
+h2 { font-size: 22px; margin: 12px 0 4px; line-height: 1.3; }
+.muted, .hint { color: var(--muted); font-size: 15px; }
+button, select { font: inherit; color: inherit; }
+.btn {
+  display: block; width: 100%; text-align: center; padding: 14px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--card); cursor: pointer; margin-top: 16px;
+}
+.btn.primary { background: var(--accent); color: var(--accent-fg); border: 0; font-weight: 600; }
+.btn:disabled { opacity: .5; }
+.link { background: none; border: 0; padding: 8px 0; color: var(--accent); cursor: pointer; }
+.danger { color: #c0392b; margin-top: 24px; }
+#books { list-style: none; padding: 0; margin: 16px 0 0; }
+#books li {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px 16px; margin-bottom: 10px; cursor: pointer;
+}
+#books small { display: block; color: var(--muted); }
+#seek { width: 100%; margin: 12px 0; accent-color: var(--accent); }
+.controls { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.controls button {
+  width: 56px; height: 56px; border-radius: 50%; border: 1px solid var(--line);
+  background: var(--card); font-size: 17px; cursor: pointer;
+}
+.controls .big { width: 76px; height: 76px; font-size: 28px; background: var(--accent); color: var(--accent-fg); border: 0; }
+.row { display: flex; gap: 12px; margin-top: 20px; }
+.row label { flex: 1; display: flex; flex-direction: column; font-size: 14px; color: var(--muted); gap: 4px; }
+.row select { padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); }
+progress { width: 100%; margin-top: 10px; accent-color: var(--accent); }
+.text { white-space: pre-wrap; font-size: 15px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px; margin-top: 20px; }
