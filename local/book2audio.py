@@ -246,6 +246,32 @@ def tidy(a, sr, max_pause=0.8, keep_pause=0.5):
     return np.concatenate([np.zeros(int(sr * 0.1), np.float32), body, np.zeros(int(sr * 0.35), np.float32)])
 
 
+def widen_gaps(a, sr, factor, min_gap=0.08, max_gap=0.5):
+    """Удлиняет тихие промежутки между словами (от min_gap до max_gap секунд) в factor раз: тишина вставляется
+    в середину промежутка, слова и темп не меняются. Края куска (паузы в начале и конце) не трогает."""
+    import numpy as np
+    hop = int(sr * 0.02)
+    n = len(a) // hop
+    loud = np.sqrt((a[:n * hop].reshape(n, hop) ** 2).mean(1)) > 0.01
+    if factor <= 1 or not loud.any():
+        return a
+    first, last = loud.argmax(), n - 1 - loud[::-1].argmax()
+    pieces, pos, i = [], 0, first
+    while i <= last:
+        if loud[i]:
+            i += 1
+            continue
+        j = i
+        while not loud[j]:
+            j += 1
+        if min_gap <= (j - i) * 0.02 <= max_gap:
+            mid = (i + j) // 2 * hop
+            pieces += [a[pos:mid], np.zeros(int((j - i) * hop * (factor - 1)), a.dtype)]
+            pos = mid
+        i = j
+    return np.concatenate(pieces + [a[pos:]])
+
+
 def make_voices(args):
     """Без образца модель выбирает голос случайно для каждого куска. Здесь одну и ту же
     фразу читают N случайных голосов: выбранные берём как образцы (--ref, --ref2)."""
