@@ -194,8 +194,8 @@ def speak(text, fixes=()):
     t = re.sub(r"\b[А-ЯЁ]{3,}\b", lambda m: m[0].capitalize(), t)        # ЙАУХУ -> Йаухy: слова КАПСОМ модель читает набором звуков
     t = ru_text.normalize(t)                                           # числа, сокращения, римские цифры, латиница -> слова
     t = re.sub(r"(\.\.\.|…)+\s*$", ".", t)                              # многоточие в конце -> точка
-    if re.search(r"\w$", t):
-        t += ","                                                        # оборванный кусок: пауза, а не обрыв
+    if re.search(r"\w[»”\"')]*$", t):
+        t += ","                                                        # оборванный кусок (и после закрывающей кавычки): пауза, а не обрыв
     for word, repl in fixes:
         t = re.sub(rf"(?<!\w){re.escape(word)}(?!\w)", lambda m: repl, t)
     return t

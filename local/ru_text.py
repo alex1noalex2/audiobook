@@ -172,4 +172,5 @@ def normalize(t):
 
 def caps_stress(marked):
     """Результат Silero Stress -> ударная гласная заглавной: Мен+я зов+ут -> МенЯ зовУт (ё и так ударная)."""
-    return re.sub(r"\+([аеёиоуыэюяАЕЁИОУЫЭЮЯ])", lambda m: m.group(1) if m.group(1) in "ёЁ" else m.group(1).upper(), marked)
+    marked = re.sub(r"\+([аеёиоуыэюяАЕЁИОУЫЭЮЯ])", lambda m: m.group(1) if m.group(1) in "ёЁ" else m.group(1).upper(), marked)
+    return marked.replace("+", "")                                      # плюс не перед гласной (Silero иногда): не читать

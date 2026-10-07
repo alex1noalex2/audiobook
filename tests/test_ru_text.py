@@ -39,6 +39,9 @@ class RuText(unittest.TestCase):
         self.assertEqual(b.speak(', душа всякого существа, непостижимый'), "душа всякого существа, непостижимый,")
         self.assertEqual(b.speak("Он сказал:..."), "Он сказал:.")
         self.assertEqual(b.speak("ЙАУХУ пришёл", [("Йауху", "Иауэ")]), "Иауэ пришёл,")  # запятая: кусок без конечного знака
+        self.assertEqual(b.speak('известна как "Чистая И Непорочная"'), 'известна как "Чистая И Непорочная",')  # после кавычки без знака тоже пауза
+        self.assertEqual(b.speak('Он сказал "хорошо."'), 'Он сказал "хорошо."')
+        self.assertEqual(r.caps_stress("Мен+я зов+ут +Чистая"), "МенЯ зовУт Чистая")
         self.assertEqual(b.speak("Как здесь (Brahm) и (PAUSANIAS, Attica) важно."), "Как здесь и важно.")
 
 
