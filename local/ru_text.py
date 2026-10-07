@@ -180,3 +180,8 @@ def plus_stress(marked):
     """Результат Silero Stress для моделей с родным «+» (F5-TTS_RUSSIAN): плюс только перед гласной, перед «ё» не нужен."""
     marked = re.sub(r"\+(?=[ёЁ])", "", marked)
     return re.sub(r"\+(?![аеиоуыэюяАЕИОУЫЭЮЯ])", "", marked)
+
+
+def yo_only(marked):
+    """Результат Silero Stress без ударений, только восстановленная «ё»: почетной -> почётной."""
+    return marked.replace("+", "")

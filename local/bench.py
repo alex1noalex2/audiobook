@@ -13,6 +13,7 @@
   base      как сейчас
   caps      ударные гласные по Silero Stress, заглавными (pip install silero-stress)
   capsref   то же и в записи образца голоса (включает caps)
+  yo        только буква «ё» там, где её опустили (почетной -> почётной), по Silero Stress
   plus      ударения знаком «+» перед гласной (для F5-TTS, --engine f5)
   plusref   то же и в записи образца голоса (включает plus)
   gapsX     паузы между словами в X раз длиннее (gaps1.4)
@@ -32,7 +33,7 @@ import ru_text  # noqa: E402
 
 
 def parse_variant(spec):
-    v = dict(spec=spec, caps=False, capsref=False, plus=False, plusref=False, gaps=1.0, steps=None, speed=None, phone=False)
+    v = dict(spec=spec, caps=False, capsref=False, yo=False, plus=False, plusref=False, gaps=1.0, steps=None, speed=None, phone=False)
     for tok in spec.split("+"):
         if tok == "base":
             continue
@@ -40,6 +41,8 @@ def parse_variant(spec):
             v["caps"] = True
         elif tok == "capsref":
             v["caps"] = v["capsref"] = True
+        elif tok == "yo":
+            v["yo"] = True
         elif tok == "plus":
             v["plus"] = True
         elif tok == "plusref":
@@ -219,7 +222,7 @@ def main():
 
     variants = [parse_variant(s) for s in args.variants]
     accentor = None
-    if any(v["caps"] or v["plus"] for v in variants):
+    if any(v["caps"] or v["plus"] or v["yo"] for v in variants):
         try:
             from silero_stress import load_accentor
         except ImportError:
@@ -253,6 +256,8 @@ def main():
                         t = ru_text.caps_stress(accentor(t))
                     elif v["plus"]:
                         t = ru_text.plus_stress(accentor(t))
+                    elif v["yo"]:
+                        t = ru_text.yo_only(accentor(t))
                 texts.append(t)
             vps = []
             for i in ids:
