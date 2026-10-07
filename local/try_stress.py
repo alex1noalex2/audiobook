@@ -11,7 +11,6 @@
 Файлы в ~/Desktop/stress, имя 00102_1_plain.wav и т. д. Слушайте и пишите, какой вариант читает верно.
 """
 import argparse
-import re
 import subprocess
 import sys
 import time
@@ -19,17 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import book2audio as b  # noqa: E402
-
-VOWELS = "аеёиоуыэюя"
-
-
-def caps(marked):
-    """Мен+я зов+ут -> МенЯ зовУт (ё и так ударная, плюс перед ней убираем)."""
-    def one(m):
-        v = m.group(1)
-        return v if v.lower() == "ё" else v.upper()
-    return re.sub(r"\+([" + VOWELS + VOWELS.upper() + "])", one, marked)
-
+from ru_text import caps_stress as caps  # noqa: E402
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)

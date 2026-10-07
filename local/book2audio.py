@@ -272,6 +272,18 @@ def widen_gaps(a, sr, factor, min_gap=0.08, max_gap=0.5):
     return np.concatenate(pieces + [a[pos:]])
 
 
+def phone_effect(a, sr, low=300, high=3400):
+    """Голос «как по телефону»: полоса low-high Гц и лёгкое сжатие. Для примечаний тем же голосом, что и основной текст."""
+    import numpy as np
+    spec = np.fft.rfft(a)
+    freq = np.fft.rfftfreq(len(a), 1 / sr)
+    edge = np.clip(np.minimum((freq - low) / 100, (high - freq) / 400) + 0.5, 0, 1)   # плавные края полосы
+    out = np.fft.irfft(spec * edge, len(a)).astype(np.float32)
+    peak = max(float(np.abs(a).max()), 1e-6)
+    out = np.tanh(1.8 * out / peak) / np.tanh(1.8)
+    return (out * peak).astype(np.float32)
+
+
 def make_voices(args):
     """Без образца модель выбирает голос случайно для каждого куска. Здесь одну и ту же
     фразу читают N случайных голосов: выбранные берём как образцы (--ref, --ref2)."""

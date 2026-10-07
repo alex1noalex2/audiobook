@@ -168,3 +168,8 @@ def normalize(t):
     t = t.replace("[", "(").replace("]", ")").replace(_DROP, " ")
     t = re.sub(r"\s{2,}", " ", t)
     return re.sub(r"\s+([,.;:!?])", r"\1", t).strip()
+
+
+def caps_stress(marked):
+    """Результат Silero Stress -> ударная гласная заглавной: Мен+я зов+ут -> МенЯ зовУт (ё и так ударная)."""
+    return re.sub(r"\+([аеёиоуыэюяАЕЁИОУЫЭЮЯ])", lambda m: m.group(1) if m.group(1) in "ёЁ" else m.group(1).upper(), marked)
