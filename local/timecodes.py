@@ -51,9 +51,11 @@ def main():
             sys.exit(f"Нет {mp3.name}: таймкоды считаются по готовым частям")
         total = mp3_seconds(mp3)
         wavs = [args.audio / f"{i:05d}.wav" for i in ids]
-        w = ([wav_seconds(p) for p in wavs] if all(p.exists() for p in wavs)
-             else [len(chunks[i][1]) for i in ids])
+        exact = all(p.exists() for p in wavs)
+        w = [wav_seconds(p) for p in wavs] if exact else [len(chunks[i][1]) for i in ids]
         k = total / sum(w)
+        print(f"часть {idx + 1:02d}: MP3 {total:7.1f} с, {'WAV ' + format(sum(w), '7.1f') + ' с' if exact else 'WAV нет, по символам'}, "
+              f"отношение {k:.4f}", file=sys.stderr)
         for i, x in zip(ids, w):
             starts[i] = start
             start += x * k
