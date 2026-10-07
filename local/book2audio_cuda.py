@@ -37,9 +37,12 @@ def synthesize(chunks, out_dir, base, args):
     if args.redo_changed:  # у кусков, озвученных до поправок, в логе нет записи: считаем, что ушёл исходный текст
         redo |= {i for i in range(len(chunks)) if (out_dir / f"{i:05d}.wav").exists()
                  and log.get(str(i), b.text_hash(chunks[i][1])) != b.text_hash(spoken[i])}
-    for i in sorted(redo):  # переозвучиваемые куски и содержащие их части MP3 удаляем
+    dirty_file = out_dir / "dirty_parts.json"  # части, которые надо собрать заново; старые MP3 лежат, пока не готова новая
+    dirty = set(json.loads(dirty_file.read_text())) if dirty_file.exists() else set()
+    for i in sorted(redo):
         (out_dir / f"{i:05d}.wav").unlink(missing_ok=True)
-        base.with_name(f"{base.name}_часть{i // args.part + 1:02d}.mp3").unlink(missing_ok=True)
+        dirty.add(i // args.part)
+    dirty_file.write_text(json.dumps(sorted(dirty)))
     if redo:
         print(f"Переозвучить кусков: {len(redo)}")
     todo = [i for i in range(len(chunks)) if not (out_dir / f"{i:05d}.wav").exists()]
@@ -76,7 +79,8 @@ def synthesize(chunks, out_dir, base, args):
         print(f"[{done}/{len(todo)}] кусок {ids[-1] + 1}/{len(chunks)}, {per:.1f} с на кусок, "
               f"осталось ~{per * (len(todo) - done) / 3600:.1f} ч", flush=True)
         if not args.limit:
-            b.join(out_dir, base, len(chunks), args.part)
+            dirty -= set(b.join(out_dir, base, len(chunks), args.part, force=dirty))
+            dirty_file.write_text(json.dumps(sorted(dirty)))
 
 
 def main():

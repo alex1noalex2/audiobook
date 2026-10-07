@@ -321,14 +321,17 @@ def synthesize(chunks, out_dir, base, args):
             join(out_dir, base, len(chunks), args.part)
 
 
-def join(out_dir, base, total, part_size):
-    """MP3 на каждые part_size кусков; файл появляется, когда готовы все куски части."""
+def join(out_dir, base, total, part_size, force=()):
+    """MP3 на каждые part_size кусков; файл появляется, когда готовы все куски части.
+    Часть из force собирается заново, даже если файл уже есть. Возвращает номера собранных частей (с нуля)."""
     import wave
     import numpy as np
+    built = []
     for start in range(0, total, part_size):
+        idx = start // part_size
         ids = range(start, min(start + part_size, total))
-        mp3 = base.with_name(f"{base.name}_часть{start // part_size + 1:02d}.mp3")
-        if mp3.exists() or not all((out_dir / f"{i:05d}.wav").exists() for i in ids):
+        mp3 = base.with_name(f"{base.name}_часть{idx + 1:02d}.mp3")
+        if (mp3.exists() and idx not in force) or not all((out_dir / f"{i:05d}.wav").exists() for i in ids):
             continue
         raw = out_dir / "part.raw"
         with raw.open("wb") as out:
@@ -340,7 +343,9 @@ def join(out_dir, base, total, part_size):
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "s16le", "-ar", str(sr), "-ac", "1",
                         "-i", str(raw), "-b:a", "64k", str(mp3)], check=True)
         raw.unlink()
+        built.append(idx)
         print(f"Готово: {mp3.name}", flush=True)
+    return built
 
 
 def guard(out_dir, chunks, refs):
