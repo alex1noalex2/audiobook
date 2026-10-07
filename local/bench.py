@@ -19,6 +19,7 @@
   gapsX     паузы между словами в X раз длиннее (gaps1.4)
   stepsN    N шагов модели (steps32)
   speedX    скорость речи (speed0.95)
+  checkN    проверка речью (Whisper): куски с сходством ниже порога озвучиваются заново, до N попыток (check = 3)
   phone     примечания тем же голосом, что основной текст, с эффектом телефона
 """
 import argparse
@@ -30,10 +31,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import book2audio as b  # noqa: E402
 import ru_text  # noqa: E402
+import verify  # noqa: E402
 
 
 def parse_variant(spec):
-    v = dict(spec=spec, caps=False, capsref=False, yo=False, plus=False, plusref=False, gaps=1.0, steps=None, speed=None, phone=False)
+    v = dict(spec=spec, caps=False, capsref=False, yo=False, plus=False, plusref=False, gaps=1.0, steps=None, speed=None, phone=False, tries=1)
     for tok in spec.split("+"):
         if tok == "base":
             continue
@@ -47,6 +49,8 @@ def parse_variant(spec):
             v["plus"] = True
         elif tok == "plusref":
             v["plus"] = v["plusref"] = True
+        elif re.fullmatch(r"check\d*", tok):
+            v["tries"] = int(tok[5:] or 3)
         elif tok == "phone":
             v["phone"] = True
         elif re.fullmatch(r"gaps[\d.]+", tok):
@@ -127,7 +131,11 @@ def engine_cuda(args, accentor):
             opts["speed"] = speed
         return [(a, model.sampling_rate) for a in run(texts, vps, **opts)]
 
-    return voice, generate
+    def reseed(n):
+        torch.manual_seed(1000 + n)
+        torch.cuda.manual_seed_all(1000 + n)
+
+    return voice, generate, reseed
 
 
 def engine_mlx(args, accentor):
@@ -167,7 +175,11 @@ def engine_mlx(args, accentor):
             pass
         return out
 
-    return voice, generate
+    def reseed(n):
+        import mlx.core as mx
+        mx.random.seed(1000 + n)
+
+    return voice, generate, reseed
 
 
 def engine_f5(args, accentor):
@@ -184,17 +196,22 @@ def engine_f5(args, accentor):
         text = b.ref_text_file(ref).read_text(encoding="utf-8").strip()
         return str(Path(ref).expanduser()), mark_ref(accentor, text, marked)
 
+    seed = {"n": 10}
+
+    def reseed(n):
+        seed["n"] = 10 + n
+
     def generate(texts, vps, steps, speed):
         out = []
         for t, (ref, ref_text) in zip(texts, vps):
             t = re.sub(r"[,;:]+$", "", t.strip())
             if t[-1:] not in (".", "!", "?"):
                 t += "."                                            # без точки F5 не озвучивает последние слова
-            wav, sr, _ = tts.infer(ref, ref_text, t, nfe_step=max(steps, 32), speed=speed or 1.0, seed=10)
+            wav, sr, _ = tts.infer(ref, ref_text, t, nfe_step=max(steps, 32), speed=speed or 1.0, seed=seed["n"])
             out.append((np.asarray(wav, dtype=np.float32), sr))
         return out
 
-    return voice, generate
+    return voice, generate, reseed
 
 
 def main():
@@ -206,6 +223,8 @@ def main():
     ap.add_argument("--at", type=float, nargs="+", default=[0.25, 0.5, 0.75], help="доли книги, где брать отрывки")
     ap.add_argument("--words", type=int, default=200, help="слов в отрывке")
     ap.add_argument("--variants", nargs="+", default=["base", "caps", "caps+capsref", "base+gaps1.4", "base+phone"])
+    ap.add_argument("--asr-model", default="large-v3-turbo", help="модель Whisper для варианта check (faster-whisper)")
+    ap.add_argument("--check-threshold", type=float, default=0.9, help="сходство с текстом, ниже которого кусок озвучивается заново")
     ap.add_argument("--max-chars", type=int, default=400)
     ap.add_argument("--steps", type=int, default=16)
     ap.add_argument("--guidance", type=float, default=2.0)
@@ -234,7 +253,8 @@ def main():
     passages = pick_passages(chunks, args.at, args.words)
     args.out.mkdir(parents=True, exist_ok=True)
 
-    voice, generate = {"mlx": engine_mlx, "cuda": engine_cuda, "f5": engine_f5}[args.engine](args, accentor)
+    voice, generate, reseed = {"mlx": engine_mlx, "cuda": engine_cuda, "f5": engine_f5}[args.engine](args, accentor)
+    transcribe = verify.load_asr(args.asr_model) if any(v["tries"] > 1 for v in variants) else None
 
     sheet = ["# Оценка проб\n", f"Книга: {args.book.name}. Варианты: {', '.join(args.variants)}.\n"]
     for k, (s, e) in enumerate(passages, 1):
@@ -263,8 +283,16 @@ def main():
             for i in ids:
                 ref = args.ref2 if chunks[i][0] == b.SIDE and args.ref2 and not v["phone"] else args.ref
                 vps.append(voice(ref, "caps" if v["capsref"] else "plus" if v["plusref"] else None))
-            parts = []
-            for i, (audio, sr) in zip(ids, generate(texts, vps, v["steps"] or args.steps, v["speed"])):
+            parts, report = [], ""
+            if v["tries"] > 1:
+                results, info = verify.best_of(generate, texts, vps, v["steps"] or args.steps, v["speed"], transcribe,
+                                               v["tries"], args.check_threshold, reseed)
+                report = "\n\n--- проверка речью (сходство, попыток) ---\n" + "\n".join(
+                    f"кусок {i}: {sc:.2f}, {n}" for i, (sc, n) in zip(ids, info))
+                print(report, flush=True)
+            else:
+                results = generate(texts, vps, v["steps"] or args.steps, v["speed"])
+            for i, (audio, sr) in zip(ids, results):
                 a = b.tidy(np.asarray(audio, dtype=np.float32), sr)
                 a = b.widen_gaps(a, sr, v["gaps"])
                 if v["phone"] and chunks[i][0] == b.SIDE:
@@ -274,7 +302,7 @@ def main():
             subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(args.out / f"{name}.wav"),
                             "-b:a", "96k", str(args.out / f"{name}.mp3")], check=True)
             (args.out / f"{name}.wav").unlink()
-            (args.out / f"{name}.txt").write_text("\n\n".join(texts), encoding="utf-8")
+            (args.out / f"{name}.txt").write_text("\n\n".join(texts) + report, encoding="utf-8")
             print(f"Готово: {name}.mp3", flush=True)
             sheet.append(f"| {v['spec']} | {name}.mp3 |  |  |")
     (args.out / "оценка.md").write_text("\n".join(sheet) + "\n", encoding="utf-8")
