@@ -142,6 +142,11 @@ def engine_mlx(args, accentor):
                 results = model.generate_batch(text=t, duration_s=dur, max_batch_size=len(t), ref_tokens=[x[0] for x in v],
                                                ref_text=[x[1] for x in v], **common)
             out += [(np.array(r.audio), r.sample_rate) for r in results]
+        try:
+            import mlx.core as mx
+            mx.clear_cache()                                        # на 16 ГБ память иначе копится, и macOS убивает процесс
+        except (ImportError, AttributeError):
+            pass
         return out
 
     return voice, generate
@@ -160,7 +165,7 @@ def main():
     ap.add_argument("--steps", type=int, default=16)
     ap.add_argument("--guidance", type=float, default=2.0)
     ap.add_argument("--engine", choices=["mlx", "cuda"], default="mlx" if sys.platform == "darwin" else "cuda")
-    ap.add_argument("--batch", type=int, default=4, help="сколько кусков озвучивать одновременно (на Mac)")
+    ap.add_argument("--batch", type=int, default=2, help="сколько кусков озвучивать одновременно (на Mac)")
     ap.add_argument("--chars-per-sec", type=float, default=13, help="сколько символов в секунду произносит голос (Mac)")
     ap.add_argument("--fixes", type=Path, help="файл поправок (по умолчанию fixes.txt рядом с книгой)")
     args = ap.parse_args()
@@ -190,6 +195,11 @@ def main():
         sheet.append("\n".join(f"> {'(примечание) ' if chunks[i][0] == b.SIDE else ''}{chunks[i][1]}" for i in ids))
         sheet.append("\n| Вариант | Файл | Оценка 1–10 | Ошибки (минута, слово, что не так) |\n|---|---|---|---|")
         for v in variants:
+            name = f"p{k}_{v['spec'].replace('+', '_')}"
+            if (args.out / f"{name}.mp3").exists():                 # прогон оборвался: готовые варианты не пересчитываем
+                print(f"Уже есть: {name}.mp3", flush=True)
+                sheet.append(f"| {v['spec']} | {name}.mp3 |  |  |")
+                continue
             texts = []
             for i in ids:
                 t = b.speak(chunks[i][1], fixes)
@@ -205,7 +215,6 @@ def main():
                 if v["phone"] and chunks[i][0] == b.SIDE:
                     a = b.phone_effect(a, sr)
                 parts.append(a)
-            name = f"p{k}_{v['spec'].replace('+', '_')}"
             b.save_wav(args.out / f"{name}.wav", np.concatenate(parts), sr)
             subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(args.out / f"{name}.wav"),
                             "-b:a", "96k", str(args.out / f"{name}.mp3")], check=True)
