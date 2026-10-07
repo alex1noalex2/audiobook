@@ -13,6 +13,8 @@
   base      как сейчас
   caps      ударные гласные по Silero Stress, заглавными (pip install silero-stress)
   capsref   то же и в записи образца голоса (включает caps)
+  plus      ударения знаком «+» перед гласной (для F5-TTS, --engine f5)
+  plusref   то же и в записи образца голоса (включает plus)
   gapsX     паузы между словами в X раз длиннее (gaps1.4)
   stepsN    N шагов модели (steps32)
   speedX    скорость речи (speed0.95)
@@ -30,7 +32,7 @@ import ru_text  # noqa: E402
 
 
 def parse_variant(spec):
-    v = dict(spec=spec, caps=False, capsref=False, gaps=1.0, steps=None, speed=None, phone=False)
+    v = dict(spec=spec, caps=False, capsref=False, plus=False, plusref=False, gaps=1.0, steps=None, speed=None, phone=False)
     for tok in spec.split("+"):
         if tok == "base":
             continue
@@ -38,6 +40,10 @@ def parse_variant(spec):
             v["caps"] = True
         elif tok == "capsref":
             v["caps"] = v["capsref"] = True
+        elif tok == "plus":
+            v["plus"] = True
+        elif tok == "plusref":
+            v["plus"] = v["plusref"] = True
         elif tok == "phone":
             v["phone"] = True
         elif re.fullmatch(r"gaps[\d.]+", tok):
@@ -78,6 +84,15 @@ def pick_passages(chunks, fractions, n_words):
     return found
 
 
+def mark_ref(accentor, text, kind):
+    """Запись образца голоса с ударениями так же, как в озвучиваемом тексте (kind: None, caps или plus)."""
+    if kind == "caps":
+        return ru_text.caps_stress(accentor(text))
+    if kind == "plus":
+        return ru_text.plus_stress(accentor(text))
+    return text
+
+
 def engine_cuda(args, accentor):
     """OmniVoice на видеокарте NVIDIA: пачками. Возвращает (voice, generate)."""
     import torch
@@ -90,7 +105,7 @@ def engine_cuda(args, accentor):
         if (ref, marked) not in cache:
             text = b.ref_text_file(ref).read_text(encoding="utf-8").strip()
             cache[(ref, marked)] = model.create_voice_clone_prompt(
-                ref_audio=str(Path(ref).expanduser()), ref_text=ru_text.caps_stress(accentor(text)) if marked else text)
+                ref_audio=str(Path(ref).expanduser()), ref_text=mark_ref(accentor, text, marked))
         return cache[(ref, marked)]
 
     def run(texts, vps, **opts):
@@ -126,7 +141,7 @@ def engine_mlx(args, accentor):
             text = b.ref_text_file(ref).read_text(encoding="utf-8").strip()
             tokens = create_voice_clone_prompt(str(Path(ref).expanduser()), tokenizer=model.audio_tokenizer,
                                                max_duration_s=10.0)
-            cache[(ref, marked)] = (tokens, ru_text.caps_stress(accentor(text)) if marked else text)
+            cache[(ref, marked)] = (tokens, mark_ref(accentor, text, marked))
         return cache[(ref, marked)]
 
     def generate(texts, vps, steps, speed):
@@ -152,6 +167,33 @@ def engine_mlx(args, accentor):
     return voice, generate
 
 
+def engine_f5(args, accentor):
+    """F5-TTS_RUSSIAN (Misha24-10): родной «+» для ударений; по одному куску. Лицензия весов CC-BY-NC-4.0."""
+    import numpy as np
+    from f5_tts.api import F5TTS
+    from huggingface_hub import hf_hub_download
+
+    repo = "Misha24-10/F5-TTS_RUSSIAN"
+    tts = F5TTS(model="F5TTS_v1_Base", ckpt_file=hf_hub_download(repo, args.f5_model),
+                vocab_file=hf_hub_download(repo, "F5TTS_v1_Base/vocab.txt"))
+
+    def voice(ref, marked):
+        text = b.ref_text_file(ref).read_text(encoding="utf-8").strip()
+        return str(Path(ref).expanduser()), mark_ref(accentor, text, marked)
+
+    def generate(texts, vps, steps, speed):
+        out = []
+        for t, (ref, ref_text) in zip(texts, vps):
+            t = re.sub(r"[,;:]+$", "", t.strip())
+            if t[-1:] not in (".", "!", "?"):
+                t += "."                                            # без точки F5 не озвучивает последние слова
+            wav, sr, _ = tts.infer(ref, ref_text, t, nfe_step=max(steps, 32), speed=speed or 1.0, seed=10)
+            out.append((np.asarray(wav, dtype=np.float32), sr))
+        return out
+
+    return voice, generate
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("book", type=Path)
@@ -164,7 +206,10 @@ def main():
     ap.add_argument("--max-chars", type=int, default=400)
     ap.add_argument("--steps", type=int, default=16)
     ap.add_argument("--guidance", type=float, default=2.0)
-    ap.add_argument("--engine", choices=["mlx", "cuda"], default="mlx" if sys.platform == "darwin" else "cuda")
+    ap.add_argument("--engine", choices=["mlx", "cuda", "f5"], default="mlx" if sys.platform == "darwin" else "cuda",
+                    help="mlx: OmniVoice на Mac; cuda: OmniVoice на видеокарте; f5: F5-TTS_RUSSIAN (нужен pip install f5-tts)")
+    ap.add_argument("--f5-model", default="F5TTS_v1_Base_v2/model_last_inference.safetensors",
+                    help="файл весов в репозитории Misha24-10/F5-TTS_RUSSIAN (есть ещё F5TTS_v1_Base_accent_tune/…, F5TTS_v1_Base_v4_winter/model_212000.safetensors)")
     ap.add_argument("--batch", type=int, default=2, help="сколько кусков озвучивать одновременно (на Mac)")
     ap.add_argument("--chars-per-sec", type=float, default=13, help="сколько символов в секунду произносит голос (Mac)")
     ap.add_argument("--fixes", type=Path, help="файл поправок (по умолчанию fixes.txt рядом с книгой)")
@@ -174,7 +219,7 @@ def main():
 
     variants = [parse_variant(s) for s in args.variants]
     accentor = None
-    if any(v["caps"] for v in variants):
+    if any(v["caps"] or v["plus"] for v in variants):
         try:
             from silero_stress import load_accentor
         except ImportError:
@@ -186,7 +231,7 @@ def main():
     passages = pick_passages(chunks, args.at, args.words)
     args.out.mkdir(parents=True, exist_ok=True)
 
-    voice, generate = (engine_mlx if args.engine == "mlx" else engine_cuda)(args, accentor)
+    voice, generate = {"mlx": engine_mlx, "cuda": engine_cuda, "f5": engine_f5}[args.engine](args, accentor)
 
     sheet = ["# Оценка проб\n", f"Книга: {args.book.name}. Варианты: {', '.join(args.variants)}.\n"]
     for k, (s, e) in enumerate(passages, 1):
@@ -203,11 +248,16 @@ def main():
             texts = []
             for i in ids:
                 t = b.speak(chunks[i][1], fixes)
-                texts.append(ru_text.caps_stress(accentor(t)) if v["caps"] and re.search(r"[А-Яа-яЁё]", t) else t)
+                if re.search(r"[А-Яа-яЁё]", t):
+                    if v["caps"]:
+                        t = ru_text.caps_stress(accentor(t))
+                    elif v["plus"]:
+                        t = ru_text.plus_stress(accentor(t))
+                texts.append(t)
             vps = []
             for i in ids:
                 ref = args.ref2 if chunks[i][0] == b.SIDE and args.ref2 and not v["phone"] else args.ref
-                vps.append(voice(ref, v["capsref"]))
+                vps.append(voice(ref, "caps" if v["capsref"] else "plus" if v["plusref"] else None))
             parts = []
             for i, (audio, sr) in zip(ids, generate(texts, vps, v["steps"] or args.steps, v["speed"])):
                 a = b.tidy(np.asarray(audio, dtype=np.float32), sr)

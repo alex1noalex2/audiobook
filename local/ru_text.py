@@ -174,3 +174,9 @@ def caps_stress(marked):
     """Результат Silero Stress -> ударная гласная заглавной: Мен+я зов+ут -> МенЯ зовУт (ё и так ударная)."""
     marked = re.sub(r"\+([аеёиоуыэюяАЕЁИОУЫЭЮЯ])", lambda m: m.group(1) if m.group(1) in "ёЁ" else m.group(1).upper(), marked)
     return marked.replace("+", "")                                      # плюс не перед гласной (Silero иногда): не читать
+
+
+def plus_stress(marked):
+    """Результат Silero Stress для моделей с родным «+» (F5-TTS_RUSSIAN): плюс только перед гласной, перед «ё» не нужен."""
+    marked = re.sub(r"\+(?=[ёЁ])", "", marked)
+    return re.sub(r"\+(?![аеиоуыэюяАЕИОУЫЭЮЯ])", "", marked)
