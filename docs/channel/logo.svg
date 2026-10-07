@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="75%">
+      <stop offset="0" stop-color="#27325f"/><stop offset="1" stop-color="#0d1226"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd98a"/><stop offset="1" stop-color="#e29a3a"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <g transform="translate(0 28)">
+  <!-- звуковые волны над книгой -->
+  <g fill="none" stroke="#f3b95f" stroke-width="12" stroke-linecap="round">
+    <path d="M196 150 Q256 96 316 150" opacity=".95"/>
+    <path d="M160 118 Q256 30 352 118" opacity=".6"/>
+    <path d="M124 86 Q256 -36 388 86" opacity=".3"/>
+  </g>
+  <circle cx="256" cy="186" r="14" fill="url(#gold)"/>
+  <!-- раскрытая книга -->
+  <path d="M256 232 C210 206 142 206 84 226 L84 392 C142 372 210 372 256 398 Z" fill="#f4ecd8"/>
+  <path d="M256 232 C302 206 370 206 428 226 L428 392 C370 372 302 372 256 398 Z" fill="#e8dcc0"/>
+  <path d="M256 232 L256 398" stroke="#b9a77c" stroke-width="5"/>
+  <g fill="none" stroke="#b9a77c" stroke-width="6" stroke-linecap="round" opacity=".7">
+    <path d="M112 262 C150 252 196 254 232 270"/><path d="M112 296 C150 286 196 288 232 304"/><path d="M112 330 C150 320 196 322 232 338"/>
+    <path d="M400 262 C362 252 316 254 280 270"/><path d="M400 296 C362 286 316 288 280 304"/><path d="M400 330 C362 320 316 322 280 338"/>
+  </g>
+  <path d="M70 398 C140 378 214 380 256 412 C298 380 372 378 442 398" fill="none" stroke="url(#gold)" stroke-width="10" stroke-linecap="round"/>
+  </g>
+</svg>
