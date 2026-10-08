@@ -20,23 +20,21 @@ def similarity(expected, heard):
 
 
 def load_asr(model_name):
-    """Возвращает transcribe(audio, sr) -> текст. Нужен faster-whisper (pip install faster-whisper)."""
+    """Возвращает transcribe(audio, sr) -> текст. Whisper через transformers (в Colab он уже есть)."""
     import numpy as np
-    from faster_whisper import WhisperModel
+    import torch
+    from transformers import pipeline
 
-    try:
-        import torch
-        cuda = torch.cuda.is_available()
-    except ImportError:
-        cuda = False
-    model = WhisperModel(model_name, device="cuda" if cuda else "cpu", compute_type="float16" if cuda else "int8")
+    cuda = torch.cuda.is_available()
+    asr = pipeline("automatic-speech-recognition", model=model_name, device=0 if cuda else -1,
+                   torch_dtype=torch.float16 if cuda else torch.float32)
 
     def transcribe(audio, sr):
         a = np.asarray(audio, dtype=np.float32)
         if sr != 16000:                                             # Whisper ждёт 16 кГц
             a = np.interp(np.linspace(0, len(a) - 1, int(len(a) * 16000 / sr)), np.arange(len(a)), a).astype(np.float32)
-        segments, _ = model.transcribe(a, language="ru", beam_size=1, condition_on_previous_text=False)
-        return " ".join(s.text for s in segments)
+        out = asr({"raw": a, "sampling_rate": 16000}, chunk_length_s=30, generate_kwargs={"language": "russian"})
+        return out["text"]
 
     return transcribe
 

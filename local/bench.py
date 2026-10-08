@@ -223,7 +223,7 @@ def main():
     ap.add_argument("--at", type=float, nargs="+", default=[0.25, 0.5, 0.75], help="доли книги, где брать отрывки")
     ap.add_argument("--words", type=int, default=200, help="слов в отрывке")
     ap.add_argument("--variants", nargs="+", default=["base", "caps", "caps+capsref", "base+gaps1.4", "base+phone"])
-    ap.add_argument("--asr-model", default="large-v3-turbo", help="модель Whisper для варианта check (faster-whisper)")
+    ap.add_argument("--asr-model", default="openai/whisper-large-v3-turbo", help="модель Whisper для варианта check (transformers)")
     ap.add_argument("--check-threshold", type=float, default=0.9, help="сходство с текстом, ниже которого кусок озвучивается заново")
     ap.add_argument("--max-chars", type=int, default=400)
     ap.add_argument("--steps", type=int, default=16)
