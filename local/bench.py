@@ -20,7 +20,7 @@
   stepsN    N шагов модели (steps32)
   speedX    скорость речи (speed0.95)
   checkN    проверка речью (Whisper): куски с сходством ниже порога озвучиваются заново, до N попыток (check = 3)
-  phone     примечания тем же голосом, что основной текст, с эффектом телефона
+  phoneW    примечания тем же голосом, что основной текст, с эффектом телефона, W — сила 0–1 (phone = 0.5)
 """
 import argparse
 import re
@@ -35,7 +35,7 @@ import verify  # noqa: E402
 
 
 def parse_variant(spec):
-    v = dict(spec=spec, caps=False, capsref=False, yo=False, plus=False, plusref=False, gaps=1.0, steps=None, speed=None, phone=False, tries=1)
+    v = dict(spec=spec, caps=False, capsref=False, yo=False, plus=False, plusref=False, gaps=1.0, steps=None, speed=None, phone=0.0, tries=1)
     for tok in spec.split("+"):
         if tok == "base":
             continue
@@ -51,8 +51,8 @@ def parse_variant(spec):
             v["plus"] = v["plusref"] = True
         elif re.fullmatch(r"check\d*", tok):
             v["tries"] = int(tok[5:] or 3)
-        elif tok == "phone":
-            v["phone"] = True
+        elif re.fullmatch(r"phone[\d.]*", tok):
+            v["phone"] = float(tok[5:] or 0.5)
         elif re.fullmatch(r"gaps[\d.]+", tok):
             v["gaps"] = float(tok[4:])
         elif re.fullmatch(r"steps\d+", tok):
@@ -296,7 +296,7 @@ def main():
                 a = b.tidy(np.asarray(audio, dtype=np.float32), sr)
                 a = b.widen_gaps(a, sr, v["gaps"])
                 if v["phone"] and chunks[i][0] == b.SIDE:
-                    a = b.phone_effect(a, sr)
+                    a = b.phone_effect(a, sr, v["phone"])
                 parts.append(a)
             b.save_wav(args.out / f"{name}.wav", np.concatenate(parts), sr)
             subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(args.out / f"{name}.wav"),

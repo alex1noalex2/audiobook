@@ -177,9 +177,14 @@ def caps_stress(marked):
 
 
 def plus_stress(marked):
-    """Результат Silero Stress для моделей с родным «+» (F5-TTS_RUSSIAN): плюс только перед гласной, перед «ё» не нужен."""
+    """Результат Silero Stress для моделей с родным «+» (F5-TTS_RUSSIAN): плюс только перед гласной, перед «ё» не нужен;
+    в словах с одной гласной ударение очевидно, а «р+ог» F5 читает как «гроб»."""
     marked = re.sub(r"\+(?=[ёЁ])", "", marked)
-    return re.sub(r"\+(?![аеиоуыэюяАЕИОУЫЭЮЯ])", "", marked)
+    marked = re.sub(r"\+(?![аеиоуыэюяАЕИОУЫЭЮЯ])", "", marked)
+    def word(m):
+        w = m.group(0)
+        return w.replace("+", "") if len(re.findall(r"[аеёиоуыэюяАЕЁИОУЫЭЮЯ]", w)) <= 1 else w
+    return re.sub(r"[А-Яа-яЁё+]+", word, marked)
 
 
 def yo_only(marked):

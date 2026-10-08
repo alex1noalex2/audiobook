@@ -42,6 +42,7 @@ class RuText(unittest.TestCase):
         self.assertEqual(b.speak('известна как "Чистая И Непорочная"'), 'известна как "Чистая И Непорочная",')  # после кавычки без знака тоже пауза
         self.assertEqual(b.speak('Он сказал "хорошо."'), 'Он сказал "хорошо."')
         self.assertEqual(r.caps_stress("Мен+я зов+ут +Чистая"), "МенЯ зовУт Чистая")
+        self.assertEqual(r.plus_stress("Р+ог и Св+ятой +Он д+евой +ёж"), "Рог и Св+ятой Он д+евой ёж")  # одна гласная и «ё» без плюса
         self.assertEqual(b.speak("Как здесь (Brahm) и (PAUSANIAS, Attica) важно."), "Как здесь и важно.")
 
 
