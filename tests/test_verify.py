@@ -13,7 +13,7 @@ class Similarity(unittest.TestCase):
         self.assertLess(verify.similarity(t, "мать первого бахуса была известна под именем брагерпре ль которой вавилонская"), 0.8)
 
     def test_similar_name_counts_and_repeat_hurts(self):
-        self.assertGreater(verify.similarity("Он сказал Паусания", "он сказал Павсания"), 0.95)
+        self.assertGreater(verify.similarity("Он сказал Паусания и ушёл", "он сказал Павсания и ушел"), 0.95)   # имя не в конце слова: не штрафуем
         self.assertLess(verify.similarity("он сказал хорошо", "он сказал сказал сказал сказал хорошо хорошо"), 0.7)
 
     def test_eaten_last_letters_are_penalised(self):
