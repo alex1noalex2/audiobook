@@ -19,6 +19,8 @@
   gapsX     паузы между словами в X раз длиннее (gaps1.4)
   stepsN    N шагов модели (steps32)
   speedX    скорость речи (speed0.95)
+  seedN     F5: начальное случайное число (от него зависит интонация вопроса и съеденные окончания); по умолчанию 10
+  tail      F5: хвост текста из пробелов, пустых кавычек и многоточия — против съеденных последних букв (совет с карточки модели)
   checkN    проверка речью (Whisper): куски с сходством ниже порога озвучиваются заново, до N попыток (check = 3)
   phoneW    примечания тем же голосом, что основной текст, с эффектом телефона, W — сила 0–1 (phone = 0.5)
 """
@@ -34,8 +36,11 @@ import ru_text  # noqa: E402
 import verify  # noqa: E402
 
 
+RUN = {"seed": None, "tail": False}                  # настройки текущего варианта для F5: начальное число и хвост текста
+
+
 def parse_variant(spec):
-    v = dict(spec=spec, caps=False, capsref=False, yo=False, plus=False, plusref=False, gaps=1.0, steps=None, speed=None, phone=0.0, tries=1)
+    v = dict(spec=spec, caps=False, capsref=False, yo=False, plus=False, plusref=False, gaps=1.0, steps=None, speed=None, phone=0.0, tries=1, seed=None, tail=False)
     for tok in spec.split("+"):
         if tok == "base":
             continue
@@ -49,6 +54,10 @@ def parse_variant(spec):
             v["plus"] = True
         elif tok == "plusref":
             v["plus"] = v["plusref"] = True
+        elif re.fullmatch(r"seed\d+", tok):
+            v["seed"] = int(tok[4:])
+        elif tok == "tail":
+            v["tail"] = True
         elif re.fullmatch(r"check\d*", tok):
             v["tries"] = int(tok[5:] or 3)
         elif re.fullmatch(r"phone[\d.]*", tok):
@@ -196,10 +205,10 @@ def engine_f5(args, accentor):
         text = b.ref_text_file(ref).read_text(encoding="utf-8").strip()
         return str(Path(ref).expanduser()), mark_ref(accentor, text, marked)
 
-    seed = {"n": 10}
+    seed = {"n": 0}
 
     def reseed(n):
-        seed["n"] = 10 + n
+        seed["n"] = n
 
     def generate(texts, vps, steps, speed):
         out = []
@@ -207,7 +216,10 @@ def engine_f5(args, accentor):
             t = re.sub(r"[,;:]+$", "", t.strip())
             if t[-1:] not in (".", "!", "?"):
                 t += "."                                            # без точки F5 не озвучивает последние слова
-            wav, sr, _ = tts.infer(ref, ref_text, t, nfe_step=max(steps, 32), speed=speed or 1.0, seed=seed["n"])
+            if RUN["tail"]:
+                t += ' \n " ". \n ... \n '                        # совет с карточки модели: хвост спасает последнее слово
+            wav, sr, _ = tts.infer(ref, ref_text, t, nfe_step=max(steps, 32), speed=speed or 1.0,
+                                  seed=(RUN["seed"] or 10) + seed["n"])
             out.append((np.asarray(wav, dtype=np.float32), sr))
         return out
 
@@ -222,6 +234,7 @@ def main():
     ap.add_argument("--out", type=Path, default=Path("bench"))
     ap.add_argument("--at", type=float, nargs="+", default=[0.25, 0.5, 0.75], help="доли книги, где брать отрывки")
     ap.add_argument("--words", type=int, default=200, help="слов в отрывке")
+    ap.add_argument("--questions", type=int, help="вместо отрывков: N кусков, оканчивающихся вопросом (проверка интонации вопроса)")
     ap.add_argument("--variants", nargs="+", default=["base", "caps", "caps+capsref", "base+gaps1.4", "base+phone"])
     ap.add_argument("--asr-model", default="openai/whisper-large-v3-turbo", help="модель Whisper для варианта check (transformers)")
     ap.add_argument("--check-threshold", type=float, default=0.9, help="сходство с текстом, ниже которого кусок озвучивается заново")
@@ -250,7 +263,11 @@ def main():
 
     chunks = b.chunk([(r, b.clean(t, False)) for r, t in b.read_book(args.book)], args.max_chars)
     fixes = b.load_fixes(args.fixes or args.book.with_name("fixes.txt"))
-    passages = pick_passages(chunks, args.at, args.words)
+    if args.questions:
+        ask = [i for i, (r, t) in enumerate(chunks) if r == b.MAIN and t.rstrip().endswith("?") and 60 <= len(t) <= 300]
+        passages = [(ask[j * len(ask) // args.questions], ask[j * len(ask) // args.questions] + 1) for j in range(args.questions)]
+    else:
+        passages = pick_passages(chunks, args.at, args.words)
     args.out.mkdir(parents=True, exist_ok=True)
 
     voice, generate, reseed = {"mlx": engine_mlx, "cuda": engine_cuda, "f5": engine_f5}[args.engine](args, accentor)
@@ -268,6 +285,7 @@ def main():
                 print(f"Уже есть: {name}.mp3", flush=True)
                 sheet.append(f"| {v['spec']} | {name}.mp3 |  |  |")
                 continue
+            RUN["seed"], RUN["tail"] = v["seed"], v["tail"]
             texts = []
             for i in ids:
                 t = b.speak(chunks[i][1], fixes)

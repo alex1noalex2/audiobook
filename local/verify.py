@@ -10,13 +10,18 @@ def words(text):
 
 
 def similarity(expected, heard):
-    """Доля совпавших слов 0–1. Похожие слова (имена, на которых Whisper ошибается) считаются совпавшими."""
-    want, got = words(expected), words(heard)
+    """Доля совпавших слов 0–1. Похожие слова (имена, на которых Whisper ошибается) считаются совпавшими,
+    но съеденный конец последнего слова («расправилис» вместо «расправились») снижает оценку на 0.15."""
+    want, got_raw = words(expected), words(heard)
     if not want:
         return 1.0
     known = set(want)
-    got = [(difflib.get_close_matches(w, known, n=1, cutoff=0.75) or [w])[0] for w in got]
-    return difflib.SequenceMatcher(None, want, got, autojunk=False).ratio()
+    got = [(difflib.get_close_matches(w, known, n=1, cutoff=0.75) or [w])[0] for w in got_raw]
+    score = difflib.SequenceMatcher(None, want, got, autojunk=False).ratio()
+    last = want[-1]
+    if len(last) >= 4 and (not got_raw or difflib.SequenceMatcher(None, last, got_raw[-1]).ratio() < 0.97):
+        score -= 0.15
+    return score
 
 
 def load_asr(model_name):

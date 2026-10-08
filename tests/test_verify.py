@@ -16,6 +16,11 @@ class Similarity(unittest.TestCase):
         self.assertGreater(verify.similarity("Он сказал Паусания", "он сказал Павсания"), 0.95)
         self.assertLess(verify.similarity("он сказал хорошо", "он сказал сказал сказал сказал хорошо хорошо"), 0.7)
 
+    def test_eaten_last_letters_are_penalised(self):
+        full = "с нимродом так сурово расправились"
+        self.assertGreater(verify.similarity("С Нимродом так сурово расправились.", full), 0.99)
+        self.assertLess(verify.similarity("С Нимродом так сурово расправились.", "с нимродом так сурово расправили"), 0.9)
+
     def test_yo_and_plus_ignored(self):
         self.assertEqual(verify.similarity("почётной жен+ой", "почетной женой"), 1.0)
 
