@@ -192,14 +192,14 @@ def engine_mlx(args, accentor):
 
 
 def engine_f5(args, accentor):
-    """F5-TTS_RUSSIAN (Misha24-10): родной «+» для ударений; по одному куску. Лицензия весов CC-BY-NC-4.0."""
+    """F5 с русскими весами (Misha24-10, лицензия CC-BY-NC-4.0; ESpeech, Apache-2.0): родной «+» для ударений; по одному куску."""
     import numpy as np
     from f5_tts.api import F5TTS
     from huggingface_hub import hf_hub_download
 
-    repo = "Misha24-10/F5-TTS_RUSSIAN"
+    repo = args.f5_repo
     tts = F5TTS(model="F5TTS_v1_Base", ckpt_file=hf_hub_download(repo, args.f5_model),
-                vocab_file=hf_hub_download(repo, "F5TTS_v1_Base/vocab.txt"))
+                vocab_file=hf_hub_download(repo, args.f5_vocab))
 
     def voice(ref, marked):
         text = b.ref_text_file(ref).read_text(encoding="utf-8").strip()
@@ -243,8 +243,10 @@ def main():
     ap.add_argument("--guidance", type=float, default=2.0)
     ap.add_argument("--engine", choices=["mlx", "cuda", "f5"], default="mlx" if sys.platform == "darwin" else "cuda",
                     help="mlx: OmniVoice на Mac; cuda: OmniVoice на видеокарте; f5: F5-TTS_RUSSIAN (нужен pip install f5-tts)")
+    ap.add_argument("--f5-repo", default="Misha24-10/F5-TTS_RUSSIAN", help="репозиторий Hugging Face с весами F5 (для ESpeech: ESpeech/ESpeech-TTS-1_RL-V2)")
     ap.add_argument("--f5-model", default="F5TTS_v1_Base_v2/model_last_inference.safetensors",
-                    help="файл весов в репозитории Misha24-10/F5-TTS_RUSSIAN (есть ещё F5TTS_v1_Base_accent_tune/…, F5TTS_v1_Base_v4_winter/model_212000.safetensors)")
+                    help="файл весов в репозитории (Misha24-10: F5TTS_v1_Base_accent_tune/…, F5TTS_v1_Base_v4_winter/model_212000.safetensors; ESpeech: espeech_tts_rlv2.pt)")
+    ap.add_argument("--f5-vocab", default="F5TTS_v1_Base/vocab.txt", help="словарь символов в репозитории (для ESpeech: vocab.txt)")
     ap.add_argument("--batch", type=int, default=2, help="сколько кусков озвучивать одновременно (на Mac)")
     ap.add_argument("--chars-per-sec", type=float, default=13, help="сколько символов в секунду произносит голос (Mac)")
     ap.add_argument("--fixes", type=Path, help="файл поправок (по умолчанию fixes.txt рядом с книгой)")

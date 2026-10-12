@@ -21,12 +21,32 @@ def similarity(expected, heard):
     last = want[-1]
     if len(last) >= 4 and (not got_raw or difflib.SequenceMatcher(None, last, got_raw[-1]).ratio() < 0.97):
         score -= 0.15
-    return score
+    return max(score, 0.0)
 
 
 def load_asr(model_name):
-    """Возвращает transcribe(audio, sr) -> текст. Whisper через transformers (в Colab он уже есть)."""
+    """Возвращает transcribe(audio, sr) -> текст.
+    «gigaam-v3-e2e-rnnt» (и другие gigaam-…): русский GigaAM через onnx-asr (pip install onnx-asr[hub]), на процессоре,
+    у автора обзора на Хабре WER 3.3% против 7.9% у Whisper turbo; иначе Whisper через transformers."""
     import numpy as np
+
+    def to16k(audio, sr):
+        a = np.asarray(audio, dtype=np.float32)
+        if sr != 16000:                                             # модели ждут 16 кГц
+            a = np.interp(np.linspace(0, len(a) - 1, int(len(a) * 16000 / sr)), np.arange(len(a)), a).astype(np.float32)
+        return a
+
+    if model_name.startswith("gigaam"):
+        import onnx_asr
+        model = onnx_asr.load_model(model_name)
+
+        def transcribe(audio, sr):
+            a = to16k(audio, sr)                                    # строго float32, иначе пустой ответ
+            step = 24 * 16000                                       # GigaAM принимает до 25 с
+            return " ".join(model.recognize(a[i:i + step], sample_rate=16000) for i in range(0, len(a), step))
+
+        return transcribe
+
     import torch
     from transformers import pipeline
 
@@ -35,10 +55,7 @@ def load_asr(model_name):
                    torch_dtype=torch.float16 if cuda else torch.float32)
 
     def transcribe(audio, sr):
-        a = np.asarray(audio, dtype=np.float32)
-        if sr != 16000:                                             # Whisper ждёт 16 кГц
-            a = np.interp(np.linspace(0, len(a) - 1, int(len(a) * 16000 / sr)), np.arange(len(a)), a).astype(np.float32)
-        out = asr({"raw": a, "sampling_rate": 16000}, chunk_length_s=30, generate_kwargs={"language": "russian"})
+        out = asr({"raw": to16k(audio, sr), "sampling_rate": 16000}, chunk_length_s=30, generate_kwargs={"language": "russian"})
         return out["text"]
 
     return transcribe
