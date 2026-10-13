@@ -80,32 +80,3 @@ def best_of(generate, texts, vps, steps, speed, transcribe, tries, threshold, re
                 results[i], scores[i] = r, score
     return results, list(zip(scores, used))
 
-
-def pitch_rise(audio, sr, tail_s=0.4, before_s=1.0):
-    """Подъём тона к концу куска в полутонах: у вопроса высота в конце выше, чем в речи перед ним, у
-    повествования падает. Тон по автокорреляции кадров 40 мс (мужской голос 70–300 Гц). 0 — тон не найден."""
-    import numpy as np
-    a = np.asarray(audio, dtype=np.float32)
-    win, hop = int(sr * 0.04), int(sr * 0.01)
-    lo, hi = int(sr / 300), int(sr / 70)
-    peak = float(np.abs(a).max()) or 1.0
-    f0 = []
-    for k in range(0, len(a) - win, hop):
-        x = a[k:k + win] - a[k:k + win].mean()
-        if np.sqrt((x ** 2).mean()) < 0.03 * peak:
-            f0.append(np.nan)
-            continue
-        ac = np.fft.irfft(np.abs(np.fft.rfft(x, 2 * win)) ** 2)[:hi + 1]
-        lag = lo + int(np.argmax(ac[lo:hi + 1]))
-        f0.append(sr / lag if ac[lag] > 0.5 * ac[0] else np.nan)
-    f0 = np.array(f0)
-    voiced = np.flatnonzero(~np.isnan(f0))
-    if len(voiced) < 20:
-        return 0.0
-    end = voiced[-1]
-    tail = f0[max(end - int(tail_s * 100), 0):end + 1]
-    before = f0[max(end - int((tail_s + before_s) * 100), 0):max(end - int(tail_s * 100), 0)]
-    tail, before = tail[~np.isnan(tail)], before[~np.isnan(before)]
-    if len(tail) < 5 or len(before) < 10:
-        return 0.0
-    return float(12 * np.log2(np.percentile(tail, 90) / np.median(before)))

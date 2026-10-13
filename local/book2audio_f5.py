@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Книга -> MP3 голосом F5-TTS Russian (Misha24-10, CC-BY-NC-4.0, только некоммерческое использование) на видеокарте
 (Colab, Kaggle). Вариант, выбранный на пробах: ударения «+» (Silero Stress) в тексте и в записи образца, 32 шага,
-скорость 1.0, примечания и заголовки тем же голосом с эффектом телефона. Вопросы: заканчивают кусок, озвучиваются
-образцом с вопросом (--ref-q) и до --q-tries раз, пока тон к концу не поднимется. Остальное — проверка речью (GigaAM).
+скорость 1.0, примечания и заголовки тем же голосом с эффектом телефона. Вопрос заканчивает кусок, и тон его
+последних 0.5 с поднимается на --q-boost полутонов (модель сама вопрос не интонирует). Проверка речью — GigaAM.
 
-    python3 local/book2audio_f5.py книга.epub --ref my_refs/ref_01.wav --ref-q my_refs/ref_05.wav
-    python3 local/book2audio_f5.py книга.epub --ref ... --questions 8     # проба: только вопросы, цифры подъёма тона
+    python3 local/book2audio_f5.py книга.epub --ref my_refs/ref_01.wav
+    python3 local/book2audio_f5.py книга.epub --ref ... --questions 8     # проба: только вопросы
 """
 import argparse
 import json
@@ -18,6 +18,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import book2audio as b  # noqa: E402
 import bench  # noqa: E402
+import intonation  # noqa: E402
 import ru_text  # noqa: E402
 import verify  # noqa: E402
 
@@ -26,7 +27,6 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("book", type=Path)
     ap.add_argument("--ref", required=True, help="WAV основного голоса; рядом .txt с текстом записи")
-    ap.add_argument("--ref-q", help="WAV образца с вопросом для вопросительных кусков (по умолчанию тот же, что --ref)")
     ap.add_argument("--out", type=Path, help="папка для кусков (по умолчанию <книга>_audio рядом с книгой)")
     ap.add_argument("--max-chars", type=int, default=400)
     ap.add_argument("--steps", type=int, default=32)
@@ -34,16 +34,15 @@ def main():
     ap.add_argument("--phone", type=float, default=0.4, help="сила эффекта телефона у примечаний и заголовков (0 — выключить)")
     ap.add_argument("--part", type=int, default=100, help="кусков в одном MP3")
     ap.add_argument("--tries", type=int, default=2, help="сколько раз озвучивать кусок с плохой проверкой речью")
-    ap.add_argument("--q-tries", type=int, default=4, help="то же для вопросов")
     ap.add_argument("--threshold", type=float, default=0.9, help="сходство с текстом, ниже которого кусок озвучивается заново")
-    ap.add_argument("--q-rise", type=float, default=2.0, help="подъём тона к концу вопроса, полутонов (меньше — озвучить заново)")
+    ap.add_argument("--q-boost", type=float, default=4.0, help="на сколько полутонов поднять тон в конце вопроса (0 — не поднимать)")
     ap.add_argument("--asr-model", default="gigaam-v3-e2e-rnnt")
     ap.add_argument("--f5-repo", default="Misha24-10/F5-TTS_RUSSIAN")
     ap.add_argument("--f5-model", default="F5TTS_v1_Base_v2/model_last_inference.safetensors")
     ap.add_argument("--f5-vocab", default="F5TTS_v1_Base/vocab.txt")
     ap.add_argument("--fixes", type=Path, help="файл поправок (по умолчанию fixes.txt рядом с книгой)")
     ap.add_argument("--limit", type=int, help="озвучить только N кусков (без склейки в MP3)")
-    ap.add_argument("--questions", type=int, help="проба: озвучить N вопросов, показать подъём тона, склеить в questions_test.mp3")
+    ap.add_argument("--questions", type=int, help="проба: озвучить N вопросов, склеить в questions_test.mp3")
     args = ap.parse_args()
 
     try:
@@ -58,9 +57,8 @@ def main():
         sys.exit("В файле нет текста (возможно, это скан)")
     print(f"Книга: {sum(len(t) for _, t in chunks)} символов, {len(chunks)} кусков"
           + (f" (убрана повторная копия раздела: {dropped} кусков)" if dropped else ""))
-    refs = [r for r in (args.ref, args.ref_q) if r]
-    for r in refs:
-        b.ref_text_file(r)
+    refs = [args.ref]
+    b.ref_text_file(args.ref)
     out_dir = args.out or args.book.with_name(args.book.stem + "_audio")
     out_dir.mkdir(parents=True, exist_ok=True)
     b.guard(out_dir, chunks, refs)
@@ -76,28 +74,26 @@ def main():
     voice, generate, reseed = bench.engine_f5(SimpleNamespace(f5_repo=args.f5_repo, f5_model=args.f5_model,
                                                               f5_vocab=args.f5_vocab), accentor)
     main_vp = voice(args.ref, "plus")
-    q_vp = voice(args.ref_q, "plus") if args.ref_q else main_vp
-    transcribe = verify.load_asr(args.asr_model) if max(args.tries, args.q_tries) > 1 else None
+    transcribe = verify.load_asr(args.asr_model) if args.tries > 1 else None
     bench.RUN["seed"], bench.RUN["tail"] = None, False
 
     def voice_chunk(i):
-        """Озвучивает кусок до нужного числа попыток; берёт лучшую: сначала по проверке речи, потом по подъёму тона вопроса."""
-        q = is_q[i]
+        """Озвучивает кусок; при плохой проверке речи (сходство ниже порога) повторяет с другим seed, берёт лучшее."""
         best = None
-        for n in range(args.q_tries if q else args.tries):
+        for n in range(args.tries):
             reseed(n)
-            audio, sr = generate([texts[i]], [q_vp if q else main_vp], args.steps, args.speed)[0]
+            audio, sr = generate([texts[i]], [main_vp], args.steps, args.speed)[0]
             score = verify.similarity(texts[i], transcribe(audio, sr)) if transcribe else 1.0
-            rise = verify.pitch_rise(audio, sr) if q else 0.0
-            key = (score >= args.threshold, min(rise, args.q_rise) if q else 0.0, score)
-            if best is None or key > best[0]:
-                best = (key, audio, sr, score, rise, n + 1)
-            if key[0] and (not q or rise >= args.q_rise):
+            if best is None or score > best[0]:
+                best = (score, audio, sr, n + 1)
+            if score >= args.threshold:
                 break
-        _, audio, sr, score, rise, used = best
+        score, audio, sr, used = best
+        if is_q[i] and args.q_boost:
+            audio = intonation.raise_ending(audio, sr, args.q_boost)
         if chunks[i][0] == b.SIDE and args.phone:
             audio = b.phone_effect(audio, sr, args.phone)
-        return audio, sr, {"score": round(score, 2), "rise": round(rise, 1), "tries": used}
+        return audio, sr, {"score": round(score, 2), "tries": used}
 
     report_file = out_dir / "report.json"
     report = json.loads(report_file.read_text()) if report_file.exists() else {}
@@ -109,8 +105,7 @@ def main():
         for i in picked:
             audio, sr, info = voice_chunk(i)
             parts += [b.tidy(audio, sr), np.zeros(sr, np.float32)]
-            print(f"кусок {i}: подъём тона {info['rise']:+.1f} полутона, попыток {info['tries']}, сходство {info['score']}  "
-                  f"{chunks[i][1][-70:]}", flush=True)
+            print(f"кусок {i}: попыток {info['tries']}, сходство {info['score']}  ...{chunks[i][1][-70:]}", flush=True)
         b.save_wav(out_dir / "questions_test.wav", np.concatenate(parts), sr)
         import subprocess
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(out_dir / "questions_test.wav"), "-b:a", "96k",
@@ -140,7 +135,7 @@ def main():
                 b.join(out_dir, base, len(chunks), args.part)
     if not args.limit:
         b.join(out_dir, base, len(chunks), args.part)
-        weak = [i for i, v in report.items() if v["score"] < args.threshold or (is_q[int(i)] and v["rise"] < args.q_rise)]
+        weak = [i for i, v in report.items() if v["score"] < args.threshold]
         print(f"Готово. Кусков, где проверка не дошла до порога: {len(weak)} (см. report.json).")
 
 

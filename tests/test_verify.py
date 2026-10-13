@@ -46,21 +46,5 @@ class BestOf(unittest.TestCase):
         self.assertEqual(info, [(1.0, 2), (1.0, 1)])
 
 
-class PitchRise(unittest.TestCase):
-    def test_question_rises_statement_falls(self):
-        import numpy as np
-        sr = 24000
-
-        def tone(f0, f1, sec):
-            f = np.linspace(f0, f1, int(sr * sec))
-            return (0.3 * np.sin(2 * np.pi * np.cumsum(f) / sr)).astype(np.float32)
-
-        question = np.concatenate([tone(120, 120, 1.5), tone(120, 170, 0.4)])
-        statement = np.concatenate([tone(130, 130, 1.5), tone(130, 95, 0.4)])
-        self.assertGreater(verify.pitch_rise(question, sr), 3)
-        self.assertLess(verify.pitch_rise(statement, sr), 1)
-        self.assertEqual(verify.pitch_rise(np.zeros(sr, np.float32), sr), 0.0)
-
-
 if __name__ == "__main__":
     unittest.main()
