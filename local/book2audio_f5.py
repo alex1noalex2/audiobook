@@ -61,7 +61,8 @@ def main():
     b.ref_text_file(args.ref)
     out_dir = args.out or args.book.with_name(args.book.stem + "_audio")
     out_dir.mkdir(parents=True, exist_ok=True)
-    b.guard(out_dir, chunks, refs)
+    if not args.questions:                                                # проба вопросов ничего не оставляет, кроме mp3
+        b.guard(out_dir, chunks, refs)
 
     accentor = load_accentor()
     fixes = b.load_fixes(args.fixes or args.book.with_name("fixes.txt"))
