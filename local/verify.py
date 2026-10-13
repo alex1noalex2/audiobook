@@ -24,6 +24,15 @@ def similarity(expected, heard):
     return max(score, 0.0)
 
 
+def segments(a, step_s=24, min_s=1.0, rate=16000):
+    """Нарезка для GigaAM: куски до step_s секунд (принимает до 25 с); слишком короткий кусок (хвост нарезки или
+    очень короткая запись) дополняется тишиной до min_s: на таком входе модель падает."""
+    import numpy as np
+    step, low = int(step_s * rate), int(min_s * rate)
+    out = [np.asarray(a[i:i + step], dtype=np.float32) for i in range(0, max(len(a), 1), step)]
+    return [np.pad(x, (0, low - len(x))) if len(x) < low else x for x in out]
+
+
 def load_asr(model_name):
     """Возвращает transcribe(audio, sr) -> текст.
     «gigaam-v3-e2e-rnnt» (и другие gigaam-…): русский GigaAM через onnx-asr (pip install onnx-asr[hub]), на процессоре,
@@ -41,9 +50,13 @@ def load_asr(model_name):
         model = onnx_asr.load_model(model_name)
 
         def transcribe(audio, sr):
-            a = to16k(audio, sr)                                    # строго float32, иначе пустой ответ
-            step = 24 * 16000                                       # GigaAM принимает до 25 с
-            return " ".join(model.recognize(a[i:i + step], sample_rate=16000) for i in range(0, len(a), step))
+            out = []
+            for seg in segments(to16k(audio, sr)):
+                try:
+                    out.append(model.recognize(seg, sample_rate=16000))
+                except ValueError:                                  # сбой распознавания одного обрывка не должен ронять весь прогон
+                    out.append("")
+            return " ".join(out)
 
         return transcribe
 

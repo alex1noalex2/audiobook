@@ -46,5 +46,14 @@ class BestOf(unittest.TestCase):
         self.assertEqual(info, [(1.0, 2), (1.0, 1)])
 
 
+class Segments(unittest.TestCase):
+    def test_short_tail_padded_and_long_split(self):
+        import numpy as np
+        segs = verify.segments(np.ones(24 * 16000 + 100, np.float32))
+        self.assertEqual([len(x) for x in segs], [24 * 16000, 16000])      # хвост в 100 отсчётов дополнен до секунды
+        self.assertEqual(len(verify.segments(np.zeros(0, np.float32))[0]), 16000)
+        self.assertEqual(len(verify.segments(np.ones(20 * 16000, np.float32))), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
