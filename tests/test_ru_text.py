@@ -53,6 +53,16 @@ class RuText(unittest.TestCase):
         self.assertEqual(" ".join(parts), sent)
         self.assertTrue(parts[0].endswith(","))
 
+    def test_question_ends_chunk_and_repeats_dropped(self):
+        items = [(b.MAIN, "Он пришёл. Кто ты такой? Я не знаю. Иди прочь.")]
+        self.assertEqual([t for _, t in b.chunk(items, 400, end_on_question=True)], ["Он пришёл. Кто ты такой?", "Я не знаю. Иди прочь."])
+        self.assertEqual(len(b.chunk(items, 400)), 1)
+        block = [(b.MAIN, f"Это достаточно длинное предложение номер {i} для проверки повторов в книге.") for i in range(12)]
+        kept, dropped = b.drop_repeats(block + [(b.MAIN, "Другой абзац, который идёт между копиями раздела.")] + block)
+        self.assertEqual((len(kept), dropped), (13, 12))
+        kept, dropped = b.drop_repeats(block[:3] + block[:3])                   # короткий повтор остаётся
+        self.assertEqual(dropped, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

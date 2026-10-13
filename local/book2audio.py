@@ -163,8 +163,9 @@ def split_long(sent, max_chars):
     return split_long(sent[:best].strip(), max_chars) + split_long(sent[best:].strip(), max_chars)
 
 
-def chunk(items, max_chars):
-    """Куски по абзацам и предложениям, не длиннее max_chars; голос в куске один. -> [(роль, текст)]"""
+def chunk(items, max_chars, end_on_question=False):
+    """Куски по абзацам и предложениям, не длиннее max_chars; голос в куске один. -> [(роль, текст)]
+    end_on_question: вопрос всегда последнее предложение куска (интонацию вопроса проверяют по концу куска)."""
     chunks, cur, role = [], "", MAIN
     for r, raw in items:
         if r != role and cur:
@@ -188,9 +189,30 @@ def chunk(items, max_chars):
                     chunks.append((role, cur))
                     cur = ""
                 cur = f"{cur} {sent}".strip()
+                if end_on_question and role == MAIN and sent.endswith("?"):
+                    chunks.append((role, cur))
+                    cur = ""
     if cur:
         chunks.append((role, cur))
     return chunks
+
+
+def drop_repeats(chunks, min_run=10):
+    """В EPUB бывают разделы, вставленные дважды. Убирает вторую копию: серию из min_run и больше подряд
+    идущих кусков, которые уже были раньше. Одиночные повторы (рефрен, «Аминь.») остаются. -> (куски, сколько убрано)"""
+    seen, repeat = set(), []
+    for c in chunks:
+        repeat.append(c in seen and len(c[1]) > 60)
+        seen.add(c)
+    drop, i = set(), 0
+    while i < len(chunks):
+        j = i
+        while j < len(chunks) and repeat[j]:
+            j += 1
+        if j - i >= min_run:
+            drop.update(range(i, j))
+        i = max(j, i + 1)
+    return [c for k, c in enumerate(chunks) if k not in drop], len(drop)
 
 
 # ---------- то, что уходит в модель ----------
