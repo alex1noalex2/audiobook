@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Озвучка книги</title>
+<style>
+  :root { --bg:#fafaf7; --card:#fff; --ink:#1d1d1b; --mute:#6b6b66; --line:#dcdcd4; --accent:#2f6f4f; --warn:#b3261e; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161614; --card:#1f1f1c; --ink:#ecece6; --mute:#9a9a92; --line:#33332e; --accent:#6fbf94; --warn:#f2958d; } }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 -apple-system, system-ui, sans-serif; }
+  main { max-width:680px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  p.sub { color:var(--mute); margin:0 0 20px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:14px; }
+  h2 { font-size:15px; margin:0 0 10px; color:var(--mute); text-transform:uppercase; letter-spacing:.04em; }
+  #drop { border:2px dashed var(--line); border-radius:10px; padding:28px 12px; text-align:center; cursor:pointer; color:var(--mute); }
+  #drop.over { border-color:var(--accent); color:var(--ink); }
+  #drop b { color:var(--ink); }
+  label { display:block; margin:10px 0 4px; font-size:14px; color:var(--mute); }
+  select, input[type=number] { width:100%; box-sizing:border-box; padding:9px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink); font:inherit; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:12px; }
+  button { padding:10px 18px; border:0; border-radius:8px; background:var(--accent); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--ink); border:1px solid var(--line); font-weight:400; }
+  button:disabled { opacity:.45; cursor:default; }
+  progress { width:100%; height:14px; }
+  textarea { width:100%; box-sizing:border-box; height:150px; font:13px/1.4 ui-monospace, monospace; background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:8px; }
+  pre { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px; font-size:12px; max-height:170px; overflow:auto; white-space:pre-wrap; }
+  .err { color:var(--warn); } .mute { color:var(--mute); font-size:14px; }
+  ul { margin:0; padding-left:18px; } li { margin:4px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Озвучка книги</h1>
+  <p class="sub">Бросьте книгу, выберите голос, нажмите «Озвучить». Остальное программа сделает сама.</p>
+
+  <section>
+    <h2>1. Книга</h2>
+    <div id="drop"><b>Перетащите сюда PDF, EPUB или TXT</b><br>или нажмите, чтобы выбрать файл</div>
+    <input id="file" type="file" accept=".pdf,.epub,.txt" hidden>
+    <p id="book" class="mute"></p>
+  </section>
+
+  <section>
+    <h2>2. Голос и режим</h2>
+    <label for="voice">Голос</label>
+    <select id="voice"></select>
+    <p id="novoice" class="mute err" hidden></p>
+    <label for="mode">Где озвучивать</label>
+    <select id="mode">
+      <option value="local">На этом компьютере</option>
+      <option value="colab">В Google Colab (быстрее, для длинных книг)</option>
+    </select>
+    <div id="localopts">
+      <label><input id="check" type="checkbox"> Проверять речь (точнее, но медленнее в 1,5–2 раза)</label>
+      <label for="boost">Подъём тона в конце вопроса, полутонов</label>
+      <input id="boost" type="number" min="0" max="8" step="0.5" value="4">
+    </div>
+    <div class="row">
+      <button id="go" disabled>Озвучить</button>
+      <button id="stop" class="ghost" hidden>Остановить</button>
+    </div>
+    <p id="msg" class="err"></p>
+  </section>
+
+  <section id="progress" hidden>
+    <h2>Ход работы</h2>
+    <progress id="bar" max="100" value="0"></progress>
+    <p id="status" class="mute"></p>
+    <pre id="log"></pre>
+  </section>
+
+  <section id="colab" hidden>
+    <h2>Для Google Colab</h2>
+    <p class="mute">1) Загрузите на Google Диск в папку <b>Audiobook</b> всё из папки <span id="cfolder"></span>. 2) Вставьте этот код в ячейку Colab и запустите.</p>
+    <textarea id="cell" readonly></textarea>
+    <div class="row"><button id="copy">Скопировать код</button><button id="opencolab" class="ghost">Открыть папку</button></div>
+  </section>
+
+  <section>
+    <h2>Готовые книги</h2>
+    <ul id="books"><li class="mute">Пока нет</li></ul>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let current = null;                                  // имя папки загруженной книги
+const post = (url, body) => fetch(url, {method: "POST", body: JSON.stringify(body || {})}).then(r => r.json());
+
+async function upload(file) {
+  $("msg").textContent = "";
+  const r = await fetch("/api/upload?name=" + encodeURIComponent(file.name), {method: "POST", body: file}).then(r => r.json());
+  if (r.error) { $("msg").textContent = r.error; return; }
+  current = r.name;
+  $("book").textContent = "Выбрана книга: " + file.name;
+  refresh();
+}
+$("drop").onclick = () => $("file").click();
+$("file").onchange = e => e.target.files[0] && upload(e.target.files[0]);
+$("drop").ondragover = e => { e.preventDefault(); $("drop").classList.add("over"); };
+$("drop").ondragleave = () => $("drop").classList.remove("over");
+$("drop").ondrop = e => { e.preventDefault(); $("drop").classList.remove("over"); e.dataTransfer.files[0] && upload(e.dataTransfer.files[0]); };
+$("mode").onchange = () => { $("localopts").hidden = $("mode").value === "colab"; $("go").textContent = $("mode").value === "colab" ? "Подготовить для Colab" : "Озвучить"; };
+
+$("go").onclick = async () => {
+  $("msg").textContent = "";
+  const body = {name: current, voice: $("voice").value, tries: $("check").checked ? 2 : 1, boost: $("boost").value};
+  if ($("mode").value === "colab") {
+    const r = await post("/api/colab", body);
+    if (r.error) { $("msg").textContent = r.error; return; }
+    $("cell").value = r.cell; $("cfolder").textContent = r.folder; $("colab").hidden = false;
+    return;
+  }
+  const r = await post("/api/start", body);
+  if (r.error) $("msg").textContent = r.error;
+  refresh();
+};
+$("stop").onclick = async () => { await post("/api/stop"); refresh(); };
+$("copy").onclick = () => { $("cell").select(); navigator.clipboard.writeText($("cell").value); $("copy").textContent = "Скопировано"; };
+$("opencolab").onclick = () => post("/api/open", {});
+
+const STATUS = {running: "Идёт озвучка", finished: "Готово", stopped: "Остановлено, можно продолжить кнопкой «Озвучить»",
+                error: "Ошибка, смотрите журнал ниже", stopping: "Останавливаю…"};
+async function refresh() {
+  const s = await fetch("/api/state").then(r => r.json());
+  const sel = $("voice"), old = sel.value;
+  sel.innerHTML = s.voices.map(v => `<option>${v}</option>`).join("");
+  if (s.voices.includes(old)) sel.value = old;
+  $("novoice").hidden = s.voices.length > 0;
+  $("novoice").textContent = `Нет голосов. Положите в папку ${s.home}/voices файлы имя.wav и имя.txt (текст записи).`;
+  const j = s.job, busy = j.status === "running" || j.status === "stopping";
+  $("go").disabled = busy || !current || !s.voices.length;
+  $("stop").hidden = !busy;
+  $("progress").hidden = j.status === "idle";
+  const pct = j.total ? Math.round(100 * j.done / j.total) : 0;
+  $("bar").value = pct;
+  $("status").textContent = (STATUS[j.status] || "") + (j.name ? ` · «${j.name}»` : "") +
+    (j.total ? ` · ${pct}% (${j.done}/${j.total} кусков в этом запуске)` : "") + (j.eta != null && busy ? ` · осталось ~${j.eta} ч` : "");
+  $("log").textContent = j.log.join("\n");
+  $("books").innerHTML = s.books.length ? s.books.map(b =>
+    `<li><b>${b.name}</b> ${b.done ? "— готово" : "— не закончена"} <a href="#" data-b="${b.name}">открыть папку</a></li>`).join("")
+    : '<li class="mute">Пока нет</li>';
+  document.querySelectorAll("#books a").forEach(a => a.onclick = e => { e.preventDefault(); post("/api/open", {name: a.dataset.b}); });
+}
+refresh(); setInterval(refresh, 2500);
+</script>
+</body>
+</html>

@@ -32,6 +32,31 @@ def stamp(s):
     return f"{s // 3600}:{s % 3600 // 60:02d}:{s % 60:02d}"
 
 
+def timecode_lines(chunks, base, audio, part=100):
+    """Строки «время заголовок» и общая длина, секунд. Части MP3 лежат рядом с книгой: <книга>_часть01.mp3."""
+    start, starts = 0.0, {}
+    for idx in range((len(chunks) + part - 1) // part):
+        ids = range(idx * part, min((idx + 1) * part, len(chunks)))
+        mp3 = base.with_name(f"{base.name}_часть{idx + 1:02d}.mp3")
+        if not mp3.exists():
+            sys.exit(f"Нет {mp3.name}: таймкоды считаются по готовым частям")
+        total = mp3_seconds(mp3)
+        wavs = [audio / f"{i:05d}.wav" for i in ids]
+        exact = all(p.exists() for p in wavs)
+        w = [wav_seconds(p) for p in wavs] if exact else [len(chunks[i][1]) for i in ids]
+        k = total / sum(w)
+        print(f"часть {idx + 1:02d}: MP3 {total:7.1f} с, {'WAV ' + format(sum(w), '7.1f') + ' с' if exact else 'WAV нет, по символам'}, "
+              f"отношение {k:.4f}", file=sys.stderr)
+        for i, x in zip(ids, w):
+            starts[i] = start
+            start += x * k
+    lines = []
+    for i, (role, text) in enumerate(chunks):
+        if role == b.SIDE and len(text) <= 150 and (i + 1 == len(chunks) or chunks[i + 1][0] == b.MAIN):
+            lines.append(f"{stamp(starts[i])} {text.rstrip('.').strip()}")
+    return lines, start
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("book", type=Path)
@@ -41,32 +66,11 @@ def main():
     ap.add_argument("--out", type=Path, default=Path("timecodes.txt"))
     args = ap.parse_args()
 
-    chunks = b.chunk([(r, b.clean(t, False)) for r, t in b.read_book(args.book)], args.max_chars)
-    base = args.book.with_suffix("")
-    start, starts = 0.0, {}
-    for idx in range((len(chunks) + args.part - 1) // args.part):
-        ids = range(idx * args.part, min((idx + 1) * args.part, len(chunks)))
-        mp3 = base.with_name(f"{base.name}_часть{idx + 1:02d}.mp3")
-        if not mp3.exists():
-            sys.exit(f"Нет {mp3.name}: таймкоды считаются по готовым частям")
-        total = mp3_seconds(mp3)
-        wavs = [args.audio / f"{i:05d}.wav" for i in ids]
-        exact = all(p.exists() for p in wavs)
-        w = [wav_seconds(p) for p in wavs] if exact else [len(chunks[i][1]) for i in ids]
-        k = total / sum(w)
-        print(f"часть {idx + 1:02d}: MP3 {total:7.1f} с, {'WAV ' + format(sum(w), '7.1f') + ' с' if exact else 'WAV нет, по символам'}, "
-              f"отношение {k:.4f}", file=sys.stderr)
-        for i, x in zip(ids, w):
-            starts[i] = start
-            start += x * k
-
-    lines = []
-    for i, (role, text) in enumerate(chunks):
-        if role == b.SIDE and len(text) <= 150 and (i + 1 == len(chunks) or chunks[i + 1][0] == b.MAIN):
-            lines.append(f"{stamp(starts[i])} {text.rstrip('.').strip()}")
+    chunks, _ = b.book_chunks(args.book, args.max_chars)
+    lines, total = timecode_lines(chunks, args.book.with_suffix(""), args.audio, args.part)
     args.out.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
-    print(f"\n{len(lines)} заголовков, всего {stamp(start)}; записано в {args.out}")
+    print(f"\n{len(lines)} заголовков, всего {stamp(total)}; записано в {args.out}")
 
 
 if __name__ == "__main__":

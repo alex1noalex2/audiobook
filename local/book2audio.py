@@ -215,6 +215,12 @@ def drop_repeats(chunks, min_run=10):
     return [c for k, c in enumerate(chunks) if k not in drop], len(drop)
 
 
+def book_chunks(path, max_chars=400):
+    """Куски книги для озвучки F5 и для таймкодов: вопрос заканчивает кусок, повторная копия раздела убрана.
+    -> (куски, сколько кусков убрано)"""
+    return drop_repeats(chunk([(r, clean(t, False)) for r, t in read_book(Path(path))], max_chars, end_on_question=True))
+
+
 # ---------- то, что уходит в модель ----------
 def load_fixes(path):
     """Файл поправок: «слово = как его записать», по одной строке; # — комментарий. -> [(слово, замена)]"""
@@ -430,6 +436,20 @@ def join(out_dir, base, total, part_size, force=()):
         built.append(idx)
         print(f"Готово: {mp3.name}", flush=True)
     return built
+
+
+def concat_parts(base):
+    """Склеивает части <книга>_частьNN.mp3 в <книга>.mp3 без перекодирования. -> путь или None, если частей нет."""
+    parts = sorted(base.parent.glob(f"{base.name}_часть*.mp3"))
+    if not parts:
+        return None
+    out = base.with_name(f"{base.name}.mp3")
+    listing = base.with_name(f"{base.name}_список.txt")
+    listing.write_text("".join(f"file '{p.resolve()}'\n" for p in parts), encoding="utf-8")
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(listing),
+                    "-c", "copy", str(out)], check=True)
+    listing.unlink()
+    return out
 
 
 def guard(out_dir, chunks, refs):

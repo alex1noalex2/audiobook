@@ -51,8 +51,7 @@ def main():
         sys.exit("Нужен Silero Stress: pip install silero-stress")
     import numpy as np
 
-    chunks = b.chunk([(r, b.clean(t, False)) for r, t in b.read_book(args.book)], args.max_chars, end_on_question=True)
-    chunks, dropped = b.drop_repeats(chunks)
+    chunks, dropped = b.book_chunks(args.book, args.max_chars)
     if not chunks:
         sys.exit("В файле нет текста (возможно, это скан)")
     print(f"Книга: {sum(len(t) for _, t in chunks)} символов, {len(chunks)} кусков"
@@ -137,6 +136,12 @@ def main():
     if not args.limit:
         b.join(out_dir, base, len(chunks), args.part)
         weak = [i for i, v in report.items() if v["score"] < args.threshold]
+        full = b.concat_parts(base)
+        if full:
+            import timecodes
+            lines, total = timecodes.timecode_lines(chunks, base, out_dir, args.part)
+            base.with_name(f"{base.name}_таймкоды.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+            print(f"Итоговый файл: {full} ({timecodes.stamp(total)}), таймкоды: {len(lines)} заголовков")
         print(f"Готово. Кусков, где проверка не дошла до порога: {len(weak)} (см. report.json).")
 
 
