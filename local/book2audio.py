@@ -139,6 +139,30 @@ def clean(raw, numbers=False):
     return text
 
 
+def split_long(sent, max_chars):
+    """Длинное предложение -> части не длиннее max_chars. Режем пополам по запятой (иначе по пробелу),
+    ближе к середине и вне «кавычек»: так в конце не остаётся хвост из одного слова, а интонация
+    части (запятая вместо точки) остаётся «продолжением»."""
+    if len(sent) <= max_chars:
+        return [sent]
+    mid, best, best_score = len(sent) / 2, None, None
+    for m in re.finditer(r" ", sent):
+        i = m.start()
+        before = sent[:i]
+        score = abs(i - mid)
+        if before[-1] not in ",;:—–":
+            score += len(sent) * 0.25                          # не по запятой: штраф
+        if before.count("«") != before.count("»"):
+            score += len(sent) * 0.25                          # внутри кавычек: штраф
+        if i < 25 or len(sent) - i < 25:
+            score += len(sent)                                 # короткий хвост/голова: почти запрет
+        if best_score is None or score < best_score:
+            best, best_score = i, score
+    if best is None:
+        return [sent[:max_chars], *split_long(sent[max_chars:], max_chars)]
+    return split_long(sent[:best].strip(), max_chars) + split_long(sent[best:].strip(), max_chars)
+
+
 def chunk(items, max_chars):
     """Куски по абзацам и предложениям, не длиннее max_chars; голос в куске один. -> [(роль, текст)]"""
     chunks, cur, role = [], "", MAIN
@@ -154,13 +178,12 @@ def chunk(items, max_chars):
                 para += "."                                    # заголовку нужна пауза после
             for sent in re.findall(r"[^.!?…]+[.!?…]*\s*", para) or [para]:
                 sent = sent.strip()
-                while len(sent) > max_chars:                   # одно предложение длиннее куска
-                    cut = max(sent.rfind(" ", 0, max_chars), 0) or max_chars
+                if len(sent) > max_chars:                      # одно предложение длиннее куска
                     if cur:
                         chunks.append((role, cur))
                         cur = ""
-                    chunks.append((role, sent[:cut].strip()))
-                    sent = sent[cut:].strip()
+                    *head, sent = split_long(sent, max_chars)
+                    chunks.extend((role, h) for h in head)
                 if cur and len(cur) + len(sent) + 1 > max_chars:
                     chunks.append((role, cur))
                     cur = ""

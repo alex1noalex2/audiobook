@@ -45,6 +45,15 @@ class RuText(unittest.TestCase):
         self.assertEqual(r.plus_stress("Р+ог и Св+ятой +Он д+евой +ёж"), "Рог и Св+ятой Он д+евой ёж")  # одна гласная и «ё» без плюса
         self.assertEqual(b.speak("Как здесь (Brahm) и (PAUSANIAS, Attica) важно."), "Как здесь и важно.")
 
+    def test_split_long_no_dangling_tail(self):
+        sent = ("Когда он пришёл в город, где жили люди, которые поклонялись многим богам, "
+                "он сказал им, что есть только один Бог, создавший небо и землю, и всё.")
+        parts = b.split_long(sent, 100)
+        self.assertTrue(all(25 <= len(p) <= 100 for p in parts))
+        self.assertEqual(" ".join(parts), sent)
+        self.assertTrue(parts[0].endswith(","))
+
 
 if __name__ == "__main__":
     unittest.main()
+
