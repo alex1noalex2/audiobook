@@ -14,6 +14,8 @@ SR, FRAME = 24000, 480            # 20 мс
 
 
 def load(path):
+    if not Path(path).exists():
+        raise SystemExit(f"Нет файла {path}. Проверьте имя и что он лежит в папке Audiobook на Диске")
     raw = subprocess.run(["ffmpeg", "-loglevel", "error", "-i", str(path), "-ac", "1", "-ar", str(SR), "-f", "f32le", "-"],
                          capture_output=True, check=True).stdout
     return np.frombuffer(raw, dtype=np.float32)
