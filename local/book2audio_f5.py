@@ -23,6 +23,17 @@ import ru_text  # noqa: E402
 import verify  # noqa: E402
 
 
+def finalize(chunks, base, out_dir, part):
+    """Склеивает части в <книга>.mp3 и пишет <книга>_таймкоды.txt."""
+    full = b.concat_parts(base)
+    if not full:
+        return
+    import timecodes
+    lines, total = timecodes.timecode_lines(chunks, base, out_dir, part)
+    base.with_name(f"{base.name}_таймкоды.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"Итоговый файл: {full} ({timecodes.stamp(total)}), таймкоды: {len(lines)} заголовков")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("book", type=Path)
@@ -43,12 +54,9 @@ def main():
     ap.add_argument("--fixes", type=Path, help="файл поправок (по умолчанию fixes.txt рядом с книгой)")
     ap.add_argument("--limit", type=int, help="озвучить только N кусков (без склейки в MP3)")
     ap.add_argument("--questions", type=int, help="проба: озвучить N вопросов, склеить в questions_test.mp3")
+    ap.add_argument("--assemble", action="store_true",
+                    help="ничего не озвучивать: заново собрать все части MP3 из готовых кусков, склеить книгу и посчитать таймкоды (видеокарта не нужна)")
     args = ap.parse_args()
-
-    try:
-        from silero_stress import load_accentor
-    except ImportError:
-        sys.exit("Нужен Silero Stress: pip install silero-stress")
     import numpy as np
 
     chunks, dropped = b.book_chunks(args.book, args.max_chars)
@@ -62,7 +70,18 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     if not args.questions:                                                # проба вопросов ничего не оставляет, кроме mp3
         b.guard(out_dir, chunks, refs)
+    base = args.book.with_suffix("")
+    if args.assemble:
+        missing = [i for i in range(len(chunks)) if not (out_dir / f"{i:05d}.wav").exists()]
+        if missing:
+            sys.exit(f"Не хватает {len(missing)} кусков (первый: {missing[0]:05d}.wav): сначала допишите озвучку без --assemble")
+        b.join(out_dir, base, len(chunks), args.part, force=range((len(chunks) + args.part - 1) // args.part))
+        return finalize(chunks, base, out_dir, args.part)
 
+    try:
+        from silero_stress import load_accentor
+    except ImportError:
+        sys.exit("Нужен Silero Stress: pip install silero-stress")
     accentor = load_accentor()
     fixes = b.load_fixes(args.fixes or args.book.with_name("fixes.txt"))
     texts = []
@@ -117,7 +136,6 @@ def main():
     todo = [i for i in range(len(chunks)) if not (out_dir / f"{i:05d}.wav").exists()]
     if args.limit:
         todo = todo[:args.limit]
-    base = args.book.with_suffix("")
     started = time.time()
     for n, i in enumerate(todo, 1):
         if not re.search(r"[А-Яа-яЁё]", texts[i]):                       # нечего читать (адрес, ссылка): тишина
@@ -136,13 +154,8 @@ def main():
     if not args.limit:
         b.join(out_dir, base, len(chunks), args.part)
         weak = [i for i, v in report.items() if v["score"] < args.threshold]
-        full = b.concat_parts(base)
-        if full:
-            import timecodes
-            lines, total = timecodes.timecode_lines(chunks, base, out_dir, args.part)
-            base.with_name(f"{base.name}_таймкоды.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
-            print(f"Итоговый файл: {full} ({timecodes.stamp(total)}), таймкоды: {len(lines)} заголовков")
-        print(f"Готово. Кусков, где проверка не дошла до порога: {len(weak)} (см. report.json).")
+        finalize(chunks, base, out_dir, args.part)
+        print(f"Кусков, где проверка речи не дошла до порога: {len(weak)} (см. report.json).")
 
 
 if __name__ == "__main__":
