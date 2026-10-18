@@ -281,6 +281,7 @@ def tidy(a, sr, max_pause=0.8, keep_pause=0.5):
     if not loud.any():
         return a
     first, last = loud.argmax(), n - 1 - loud[::-1].argmax()
+    first, last = max(first - 2, 0), min(last + 3, n - 1)          # запас ~60 мс: тихие «т», «с», «ь» на краях ниже порога
     frames, i = loud[first:last + 1], 0
     keep = np.ones(len(frames), bool)
     while i < len(frames):

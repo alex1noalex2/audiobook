@@ -20,7 +20,7 @@ class RuText(unittest.TestCase):
         self.assertEqual(r.normalize("жил 502 года"), "жил пятьсот два года")  # срок, а не календарный год
 
     def test_verse_references(self):
-        self.assertEqual(r.normalize("(Откр. 17:5)"), "(Откровение глава семнадцать, стих пять)")
+        self.assertEqual(r.normalize("(Откр. 17:5)"), "(Откровение, глава семнадцатая, стих пятый)")
         self.assertIn("стихи с двадцать шестого по двадцать восьмой", r.normalize("Иов 31:26-28"))
         self.assertTrue(r.normalize("1 Кор. 5:3").startswith("Первое Коринфянам"))
 
@@ -62,6 +62,21 @@ class RuText(unittest.TestCase):
         self.assertEqual((len(kept), dropped), (13, 12))
         kept, dropped = b.drop_repeats(block[:3] + block[:3])                   # короткий повтор остаётся
         self.assertEqual(dropped, 0)
+
+    def test_bible_reference_reads_as_separate_phrase(self):
+        self.assertEqual(b.speak("Как сказано (Откр. 17:5), Вавилон."),
+                         "Как сказано (Откровение, глава семнадцатая, стих пятый), Вавилон.")
+        self.assertIn("Третья книга Царств, глава одиннадцатая, стих седьмой", b.speak("(3 Царств 11:7)"))
+        self.assertIn("стихи с восьмого по десятый", b.speak("Быт. 10:8-10."))
+        self.assertEqual(b.speak("Было в 12:30 утра."), "Было в двенадцать тридцать утра.")
+
+    def test_tidy_keeps_quiet_ending(self):
+        import numpy as np
+        sr = 24000
+        a = np.concatenate([np.zeros(sr // 2), 0.3 * np.ones(sr), 0.006 * np.ones(int(0.04 * sr)), np.zeros(sr)]).astype(np.float32)
+        out = b.tidy(a, sr)
+        tail_kept = (np.abs(out) > 0.004).sum() / sr
+        self.assertGreater(tail_kept, 1.03)                                  # тихие 40 мс после речи остались
 
 
 if __name__ == "__main__":

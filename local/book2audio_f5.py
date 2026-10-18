@@ -23,15 +23,24 @@ import ru_text  # noqa: E402
 import verify  # noqa: E402
 
 
-def finalize(chunks, base, out_dir, part):
-    """Склеивает части в <книга>.mp3 и пишет <книга>_таймкоды.txt."""
+def finalize(chunks, base, out_dir, part, threshold=0.9):
+    """Склеивает части в <книга>.mp3, пишет <книга>_таймкоды.txt и <книга>_проверить.txt (куски с худшей проверкой речи, по времени)."""
     full = b.concat_parts(base)
     if not full:
         return
     import timecodes
-    lines, total = timecodes.timecode_lines(chunks, base, out_dir, part)
+    lines, total, starts = timecodes.timecode_lines(chunks, base, out_dir, part)
     base.with_name(f"{base.name}_таймкоды.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"Итоговый файл: {full} ({timecodes.stamp(total)}), таймкоды: {len(lines)} заголовков")
+    report_file = out_dir / "report.json"
+    if report_file.exists():
+        report = json.loads(report_file.read_text())
+        weak = sorted((v["score"], int(i)) for i, v in report.items() if v["score"] < threshold and int(i) in starts)
+        rows = [f"{timecodes.stamp(starts[i])}  {sc:.2f}  {chunks[i][1][:140]}" for sc, i in weak[:100]]
+        base.with_name(f"{base.name}_проверить.txt").write_text(
+            f"Куски с худшей проверкой речи ({len(weak)} ниже {threshold}); показаны 100 худших: время, оценка, начало текста\n"
+            + "\n".join(rows) + "\n", encoding="utf-8")
+        print(f"Список для прослушивания: {base.name}_проверить.txt ({len(weak)} кусков ниже порога)")
 
 
 def main():
@@ -54,9 +63,13 @@ def main():
     ap.add_argument("--fixes", type=Path, help="файл поправок (по умолчанию fixes.txt рядом с книгой)")
     ap.add_argument("--limit", type=int, help="озвучить только N кусков (без склейки в MP3)")
     ap.add_argument("--questions", type=int, help="проба: озвучить N вопросов, склеить в questions_test.mp3")
+    ap.add_argument("--redo-weak", action="store_true",
+                    help="переозвучить куски с плохой проверкой речи и куски со ссылками на стихи (хвост текста спасает последнее слово, до --tries попыток)")
     ap.add_argument("--assemble", action="store_true",
                     help="ничего не озвучивать: заново собрать все части MP3 из готовых кусков, склеить книгу и посчитать таймкоды (видеокарта не нужна)")
     args = ap.parse_args()
+    if args.redo_weak:
+        args.tries = max(args.tries, 4)
     import numpy as np
 
     chunks, dropped = b.book_chunks(args.book, args.max_chars)
@@ -76,7 +89,7 @@ def main():
         if missing:
             sys.exit(f"Не хватает {len(missing)} кусков (первый: {missing[0]:05d}.wav): сначала допишите озвучку без --assemble")
         b.join(out_dir, base, len(chunks), args.part, force=range((len(chunks) + args.part - 1) // args.part))
-        return finalize(chunks, base, out_dir, args.part)
+        return finalize(chunks, base, out_dir, args.part, args.threshold)
 
     try:
         from silero_stress import load_accentor
@@ -94,7 +107,7 @@ def main():
                                                               f5_vocab=args.f5_vocab), accentor)
     main_vp = voice(args.ref, "plus")
     transcribe = verify.load_asr(args.asr_model) if args.tries > 1 else None
-    bench.RUN["seed"], bench.RUN["tail"] = None, False
+    bench.RUN["seed"], bench.RUN["tail"] = None, args.redo_weak
 
     def voice_chunk(i):
         """Озвучивает кусок; при плохой проверке речи (сходство ниже порога) повторяет с другим seed, берёт лучшее."""
@@ -133,6 +146,19 @@ def main():
         print(f"Готово: {out_dir / 'questions_test.mp3'} (порядок как в списке выше)")
         return
 
+    if args.redo_weak:
+        redo_file = out_dir / "redo.json"
+        if redo_file.exists():
+            redo = set(json.loads(redo_file.read_text()))
+        else:
+            weak = {int(i) for i, v in report.items() if v["score"] < args.threshold}
+            verses = {i for i, (_, t) in enumerate(chunks) if re.search(r"\d\s*:\s*\d", t)}   # ссылки на стихи прочитаются иначе
+            redo = weak | verses
+            redo_file.write_text(json.dumps(sorted(redo)))
+        pending = [i for i in sorted(redo) if not report.get(str(i), {}).get("redo")]
+        for i in pending:
+            (out_dir / f"{i:05d}.wav").unlink(missing_ok=True)
+        print(f"Переозвучить кусков: {len(pending)} из {len(redo)} (остальные уже сделаны)", flush=True)
     todo = [i for i in range(len(chunks)) if not (out_dir / f"{i:05d}.wav").exists()]
     if args.limit:
         todo = todo[:args.limit]
@@ -143,7 +169,7 @@ def main():
             continue
         audio, sr, info = voice_chunk(i)
         b.save_wav(out_dir / f"{i:05d}.wav", audio, sr)
-        report[str(i)] = info
+        report[str(i)] = info | ({"redo": True} if args.redo_weak else {})
         if n % 10 == 0 or n == len(todo):
             report_file.write_text(json.dumps(report))
             per = (time.time() - started) / n
@@ -152,9 +178,12 @@ def main():
             if not args.limit:
                 b.join(out_dir, base, len(chunks), args.part)
     if not args.limit:
-        b.join(out_dir, base, len(chunks), args.part)
+        report_file.write_text(json.dumps(report))
+        b.join(out_dir, base, len(chunks), args.part,
+               force=range((len(chunks) + args.part - 1) // args.part) if args.redo_weak else ())
+        (out_dir / "redo.json").unlink(missing_ok=True)
         weak = [i for i, v in report.items() if v["score"] < args.threshold]
-        finalize(chunks, base, out_dir, args.part)
+        finalize(chunks, base, out_dir, args.part, args.threshold)
         print(f"Кусков, где проверка речи не дошла до порога: {len(weak)} (см. report.json).")
 
 

@@ -33,7 +33,7 @@ def stamp(s):
 
 
 def timecode_lines(chunks, base, audio, part=100):
-    """Строки «время заголовок» и общая длина, секунд. Части MP3 лежат рядом с книгой: <книга>_часть01.mp3."""
+    """Строки «время заголовок», общая длина и начало каждого куска, секунд. Части MP3 лежат рядом с книгой: <книга>_часть01.mp3."""
     start, starts = 0.0, {}
     for idx in range((len(chunks) + part - 1) // part):
         ids = range(idx * part, min((idx + 1) * part, len(chunks)))
@@ -54,7 +54,7 @@ def timecode_lines(chunks, base, audio, part=100):
     for i, (role, text) in enumerate(chunks):
         if role == b.SIDE and len(text) <= 150 and (i + 1 == len(chunks) or chunks[i + 1][0] == b.MAIN):
             lines.append(f"{stamp(starts[i])} {text.rstrip('.').strip()}")
-    return lines, start
+    return lines, start, starts
 
 
 def main():
@@ -67,7 +67,7 @@ def main():
     args = ap.parse_args()
 
     chunks, _ = b.book_chunks(args.book, args.max_chars)
-    lines, total = timecode_lines(chunks, args.book.with_suffix(""), args.audio, args.part)
+    lines, total, _ = timecode_lines(chunks, args.book.with_suffix(""), args.audio, args.part)
     args.out.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
     print(f"\n{len(lines)} заголовков, всего {stamp(total)}; записано в {args.out}")
