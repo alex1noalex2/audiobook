@@ -19,6 +19,7 @@ HOME = Path(os.environ.get("AUDIOBOOK_HOME", Path.home() / "Audiobook"))
 SCRIPT = os.environ.get("BOOK2AUDIO_SCRIPT", str(Path(__file__).resolve().parent / "book2audio_f5.py"))
 PAGE = Path(__file__).with_name("app.html")
 FORMATS = {".pdf", ".epub", ".txt"}
+ACTIONS = {"assemble": "--assemble", "redo": "--redo-weak"}      # озвучить / пересобрать книгу из готовых кусков / переозвучить слабые места
 PROGRESS = re.compile(r"\[(\d+)/(\d+)\].*осталось ~([\d.]+) ч")
 
 job = {"name": None, "proc": None, "log": [], "done": 0, "total": 0, "eta": None, "status": "idle"}
@@ -68,7 +69,7 @@ def prepare_colab(name, voice):
     return colab_cell(name, book.name, voice)
 
 
-def start_job(name, voice, tries, boost):
+def start_job(name, voice, tries, boost, action="voice"):
     with lock:
         if job["proc"] and job["proc"].poll() is None:
             raise ValueError("Уже идёт озвучка другой книги")
@@ -81,6 +82,8 @@ def start_job(name, voice, tries, boost):
         raise ValueError(f"Нет голоса «{voice}»: нужны {voice}.wav и {voice}.txt в {HOME / 'voices'}")
     cmd = [sys.executable, SCRIPT, str(book), "--ref", str(ref), "--out", str(folder / "audio"),
            "--tries", str(tries), "--q-boost", str(boost)]
+    if action in ACTIONS:
+        cmd.append(ACTIONS[action])
     env = dict(os.environ, PYTORCH_ENABLE_MPS_FALLBACK="1", PYTHONUNBUFFERED="1")
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
     with lock:
@@ -148,7 +151,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send({"name": folder.name})
             req = json.loads(self.rfile.read(length) or b"{}")
             if url.path == "/api/start":
-                start_job(req["name"], req["voice"], int(req.get("tries", 1)), float(req.get("boost", 4)))
+                start_job(req["name"], req["voice"], int(req.get("tries", 1)), float(req.get("boost", 4)), req.get("action", "voice"))
                 return self.send({"ok": True})
             if url.path == "/api/stop":
                 with lock:

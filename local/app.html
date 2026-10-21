@@ -52,6 +52,12 @@
       <option value="colab">В Google Colab (быстрее, для длинных книг)</option>
     </select>
     <div id="localopts">
+      <label for="action">Что сделать</label>
+      <select id="action">
+        <option value="voice">Озвучить книгу (или продолжить с места остановки)</option>
+        <option value="assemble">Пересобрать книгу и таймкоды из готовых кусков</option>
+        <option value="redo">Переозвучить слабые места и ссылки на стихи</option>
+      </select>
       <label><input id="check" type="checkbox"> Проверять речь (точнее, но медленнее в 1,5–2 раза)</label>
       <label for="boost">Подъём тона в конце вопроса, полутонов</label>
       <input id="boost" type="number" min="0" max="8" step="0.5" value="4">
@@ -104,7 +110,7 @@ $("mode").onchange = () => { $("localopts").hidden = $("mode").value === "colab"
 
 $("go").onclick = async () => {
   $("msg").textContent = "";
-  const body = {name: current, voice: $("voice").value, tries: $("check").checked ? 2 : 1, boost: $("boost").value};
+  const body = {name: current, voice: $("voice").value, action: $("action").value, tries: $("check").checked ? 2 : 1, boost: $("boost").value};
   if ($("mode").value === "colab") {
     const r = await post("/api/colab", body);
     if (r.error) { $("msg").textContent = r.error; return; }
