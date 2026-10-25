@@ -477,7 +477,11 @@ def join(out_dir, base, total, part_size, force=()):
         idx = start // part_size
         ids = range(start, min(start + part_size, total))
         mp3 = base.with_name(f"{base.name}_часть{idx + 1:02d}.mp3")
-        if (mp3.exists() and idx not in force) or not all((out_dir / f"{i:05d}.wav").exists() for i in ids):
+        wavs = [out_dir / f"{i:05d}.wav" for i in ids]
+        if not all(w.exists() for w in wavs):
+            continue
+        fresh = mp3.exists() and mp3.stat().st_mtime >= max(w.stat().st_mtime for w in wavs)   # часть старее своих кусков — устарела
+        if fresh and idx not in force:
             continue
         raw = out_dir / "part.raw"
         with raw.open("wb") as out:

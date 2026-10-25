@@ -96,6 +96,23 @@ class RuText(unittest.TestCase):
         self.assertEqual(b.speak("Мы провели Zoom в ЦСБ, Сдвиг № 2.", fx), "Мы провели Зум в Цэ-Эс-Бэ, Сдвиг номер два.")
         self.assertEqual(b.speak("Мы провели Zoom.", []), "Мы провели,")                  # без поправки латиница выбрасывается
 
+    def test_join_rebuilds_stale_part(self):
+        import os
+        import tempfile
+        import time
+        import numpy as np
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "audio"
+            out.mkdir()
+            for i in range(2):
+                b.save_wav(out / f"{i:05d}.wav", (0.3 * np.sin(np.arange(24000) / 20)).astype(np.float32), 24000)
+            base = Path(d) / "kniga"
+            self.assertEqual(b.join(out, base, 2, 2), [0])
+            self.assertEqual(b.join(out, base, 2, 2), [])                       # свежая часть не пересобирается
+            old = time.time() - 3600
+            os.utime(base.with_name("kniga_часть01.mp3"), (old, old))            # часть от прошлой озвучки: старее кусков
+            self.assertEqual(b.join(out, base, 2, 2), [0])
+
 
 if __name__ == "__main__":
     unittest.main()

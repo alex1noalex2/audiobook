@@ -71,17 +71,31 @@ https://github.com/alex1noalex2/audiobook (ветка `main`, открытый).
 3. Двойной щелчок `~/audiobook-code/local/Озвучить книгу.command` → страница в браузере → бросить файл → голос → кнопка.
    Результат: `~/Audiobook/books/<книга>/`. Скорость на M1 неизвестна; для длинных книг режим «В Google Colab».
 
-### В Google Colab (T4 GPU)
-Папка на Диске `MyDrive/Audiobook`: `babylon.epub`, `my_refs/ref_01.wav` и `.txt`. Ячейка:
+### Порядок в папке Audiobook (Google Диск и Mac одинаково)
+
+```
+Audiobook/
+  voices/Саша.wav + Саша.txt        голос (образец + точный текст записи); остальное в voices/образцы/, voices/исходные/
+  books/<книга>/<книга>.epub        книга, рядом <книга>.drop.txt (что не читать) и <книга>.fixes.txt (произношение)
+  books/<книга>/audio/              куски 00000.wav…, report.json (не трогать, по ним идёт продолжение)
+  books/<книга>/<книга>.mp3, _частьNN.mp3, _таймкоды.txt, _проверить.txt
+  _удалить/                         проба и старое; стирает владелец (потом очистить Корзину)
+```
+Новая книга = новая папка `books/<имя>/`; одну папку на две книги не делать. Навести порядок в старой куче:
+`python3 local/organize_drive.py /content/drive/MyDrive/Audiobook` (план) → `… --apply --fixes-for babylon` (выполнить).
+
+### В Google Colab (T4 GPU) — одна ячейка для любой книги
+Меняется только `NAME` (имя папки книги):
 
 ```
 from google.colab import drive
 drive.mount('/content/drive')
 FOLDER = "/content/drive/MyDrive/Audiobook"
-R = f"{FOLDER}/my_refs"
+NAME = "babylon"
+BOOK = f"{FOLDER}/books/{NAME}"
 !rm -rf /content/audiobook && git clone -q https://github.com/alex1noalex2/audiobook /content/audiobook
-!pip install -q f5-tts silero-stress onnxruntime "onnx-asr[hub]" num2words praat-parselmouth pypdf
-!python /content/audiobook/local/book2audio_f5.py {FOLDER}/babylon.epub --ref {R}/ref_01.wav --out {FOLDER}/babylon_f5_book
+!pip install -q f5-tts silero-stress onnxruntime "onnx-asr[hub]" num2words praat-parselmouth pypdf pymorphy3 pymorphy3-dicts-ru
+!python /content/audiobook/local/book2audio_f5.py {BOOK}/{NAME}.epub --ref {FOLDER}/voices/Саша.wav --out {BOOK}/audio
 print("ГОТОВО")
 ```
 
@@ -89,9 +103,9 @@ print("ГОТОВО")
 - Дополнительные ключи (в конец команды): `--questions 8` (проба вопросов, ничего не меняет), `--assemble` (пересобрать части,
   книгу и таймкоды без модели, достаточно CPU), `--redo-weak` (переозвучить слабые куски и ссылки на стихи с хвостом и 4
   попытками), `--tries 1` (без проверки речи, быстрее), `--q-boost 6` (сильнее подъём), `--speed`, `--steps`.
-- Итог в `MyDrive/Audiobook`: `<книга>.mp3`, `<книга>_таймкоды.txt`, `<книга>_проверить.txt` (худшие куски по времени),
-  `<книга>_частьNN.mp3`; куски и `report.json` — в папке `--out`.
-- Нарезать образцы из длинной записи: `python3 local/make_ref.py запись.mp3 --out my_refs` (в Colab нужны
+- Итог в `books/<книга>/`: `<книга>.mp3`, `<книга>_таймкоды.txt`, `<книга>_проверить.txt` (худшие куски по времени),
+  `<книга>_частьNN.mp3`; куски и `report.json` — в `books/<книга>/audio`.
+- Нарезать образцы из длинной записи: `python3 local/make_ref.py запись.mp3 --out voices/образцы` (в Colab нужны
   `silero-stress onnxruntime "onnx-asr[hub]" num2words`).
 
 ### Бесплатные лимиты и обходы
@@ -114,8 +128,8 @@ Colab free: сессия ~2–5,5 ч, потом лимит T4 восстана�
 - GigaAM падал «window shape cannot be larger…» на коротких обрывках — исправлено (`verify.segments`).
 - «В папке лежат куски от другого запуска» — отпечаток `run.json` не совпал (другая книга/голос/разбор): удалить папку
   `--out` или указать другую. Проба `--questions` отпечаток не проверяет.
-- Длины частей MP3 и кусков расходятся — части собраны из других версий кусков (два запуска одновременно или после
-  правок): `--assemble`.
+- Длины частей MP3 и кусков расходятся — часть mp3 осталась от прошлой озвучки (имена совпадают: `<книга>_частьNN.mp3`).
+  Теперь `join` сам пересобирает часть, если она старее своих кусков; вручную: `--assemble`.
 - Диск Google почти полон: удалять тестовые папки `bench*` и **очищать Корзину**.
 - «Cannot mount drive» — разрешить сторонние cookie для colab.research.google.com, тот же аккаунт, Runtime → Disconnect
   and delete runtime, переподключить.
