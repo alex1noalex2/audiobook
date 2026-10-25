@@ -78,6 +78,24 @@ class RuText(unittest.TestCase):
         tail_kept = (np.abs(out) > 0.004).sum() / sr
         self.assertGreater(tail_kept, 1.03)                                  # тихие 40 мс после речи остались
 
+    def test_join_soft_hyphens_and_drop_rules(self):
+        text = "Книга, которую вы держите в руках, помогает; вы дер-жите книгу, а кто-то и из-за этого читает."
+        items, n = b.join_soft_hyphens([(b.MAIN, text)], min_count=1)
+        if n:                                                                 # при pymorphy3 и без него склеиваются только разрывы слов
+            self.assertIn("вы держите книгу", items[0][1])
+            self.assertIn("кто-то", items[0][1])
+            self.assertIn("из-за", items[0][1])
+        self.assertEqual(b.join_soft_hyphens([(b.MAIN, text)])[1], 0)       # разрывов меньше порога: книга не меняется
+        chunks = [(b.SIDE, "Оглавление."), (b.MAIN, "Все права защищены. Издание 2022."), (b.MAIN, "Текст книги.")]
+        kept, dropped = b.drop_matching(chunks, ["Все права защищены", "=Оглавление."])
+        self.assertEqual((kept, dropped), ([(b.MAIN, "Текст книги.")], 2))
+        self.assertEqual(b.drop_matching(chunks, ["=Все права"])[1], 0)       # «=» — кусок целиком, не часть
+
+    def test_latin_fixes_apply_before_latin_is_dropped(self):
+        fx = [("Zoom", "Зум"), ("Цсб", "Цэ-Эс-Бэ")]
+        self.assertEqual(b.speak("Мы провели Zoom в ЦСБ, Сдвиг № 2.", fx), "Мы провели Зум в Цэ-Эс-Бэ, Сдвиг номер два.")
+        self.assertEqual(b.speak("Мы провели Zoom.", []), "Мы провели,")                  # без поправки латиница выбрасывается
+
 
 if __name__ == "__main__":
     unittest.main()

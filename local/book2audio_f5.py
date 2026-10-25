@@ -96,7 +96,7 @@ def main():
     except ImportError:
         sys.exit("Нужен Silero Stress: pip install silero-stress")
     accentor = load_accentor()
-    fixes = b.load_fixes(args.fixes or args.book.with_name("fixes.txt"))
+    fixes = b.fixes_for(args.book, args.fixes)
     texts = []
     for _, t in chunks:
         s = b.speak(t, fixes)

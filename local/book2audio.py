@@ -215,10 +215,54 @@ def drop_repeats(chunks, min_run=10):
     return [c for k, c in enumerate(chunks) if k not in drop], len(drop)
 
 
+HYPHEN_WORD = re.compile(r"(?<![\w-])([А-Яа-яЁё]+)-([а-яё][а-яёА-ЯЁ]*)(?![\w-])")        # «поко-лениЯ»
+
+
+def join_soft_hyphens(items, min_count=200):
+    """В EPUB из PDF слова часто разорваны переносом («поколе-ние», «дер-жите»). Склеивает такие слова, если
+    «левая+правая» — слово русского словаря (pymorphy3; без него — слово, встречающееся в книге без дефиса,
+    и хотя бы одна часть словом не является). Настоящие дефисы («кто-то», «из-за», «по-разному», «богиня-мать»,
+    «веб-разработчик») остаются: слитно они не слова. Включается, только если таких разрывов не меньше min_count (в чистой книге ничего не меняется).
+    -> (items, сколько слов склеено)"""
+    try:
+        import pymorphy3
+        known = pymorphy3.MorphAnalyzer().word_is_known
+    except ImportError:
+        vocab = set(re.findall(r"(?<![\w-])[а-яё]+(?![\w-])", " ".join(t for _, t in items).lower()))
+        known = vocab.__contains__
+    strict = "vocab" in locals()
+
+    def broken(m):
+        left, right = m[1].lower(), m[2]
+        return known(left + right) and not (strict and known(left) and known(right))
+
+    count = sum(1 for _, t in items for m in HYPHEN_WORD.finditer(t) if broken(m))
+    if count < min_count:
+        return items, 0
+    return [(r, HYPHEN_WORD.sub(lambda m: m[1] + m[2] if broken(m) else m[0], t)) for r, t in items], count
+
+
+def drop_matching(chunks, rules):
+    """Убирает куски по правилам: строка = любой кусок, где она встречается; «=строка» — кусок целиком равен строке."""
+    def hit(text):
+        return any(text.strip() == r[1:] if r.startswith("=") else r in text for r in rules)
+    kept = [c for c in chunks if not hit(c[1])]
+    return kept, len(chunks) - len(kept)
+
+
 def book_chunks(path, max_chars=400):
-    """Куски книги для озвучки F5 и для таймкодов: вопрос заканчивает кусок, повторная копия раздела убрана.
+    """Куски книги для озвучки F5 и для таймкодов: переносы склеены (если их много), вопрос заканчивает кусок, повторная
+    копия раздела убрана, куски по правилам из <книга>.drop.txt (выходные данные, оглавление в конце) выброшены.
     -> (куски, сколько кусков убрано)"""
-    return drop_repeats(chunk([(r, clean(t, False)) for r, t in read_book(Path(path))], max_chars, end_on_question=True))
+    path = Path(path)
+    items, _ = join_soft_hyphens([(r, clean(t, False)) for r, t in read_book(path)])
+    chunks, dropped = drop_repeats(chunk(items, max_chars, end_on_question=True))
+    rules = path.with_suffix(".drop.txt")
+    if rules.exists():
+        lines = [x.strip("\n") for x in rules.read_text(encoding="utf-8").splitlines() if x.strip() and not x.startswith("#")]
+        chunks, extra = drop_matching(chunks, lines)
+        dropped += extra
+    return chunks, dropped
 
 
 # ---------- то, что уходит в модель ----------
@@ -234,11 +278,21 @@ def load_fixes(path):
     return fixes
 
 
+def fixes_for(book, explicit=None):
+    """Поправки: --fixes, иначе <книга>.fixes.txt, иначе fixes.txt в той же папке."""
+    book = Path(book)
+    own = book.with_suffix(".fixes.txt")
+    return load_fixes(explicit or (own if own.exists() else book.with_name("fixes.txt")))
+
+
 def speak(text, fixes=()):
     """Текст куска для модели. Границы куска ломают озвучку: запятая в начале, многоточие
     или обрыв без знака в конце дают лишние звуки. Разбивку на куски это не меняет."""
     t = re.sub(r"[=_~#*-]{3,}", " ", text).strip()                      # строки-разделители
     t = re.sub(r"^[^\w«\"“(—]+", "", t)                                 # не начинать со знака
+    for word, repl in sorted(fixes, key=lambda f: -len(f[0])):          # поправки для латиницы («Zoom = Зум»): позже латиница уже выброшена
+        if re.search(r"[A-Za-z]", word):
+            t = re.sub(rf"(?<!\w){re.escape(word)}(?!\w)", lambda m: repl, t)
     t = re.sub(r"\(\s*[^()А-Яа-яЁё]*[A-Za-z][^()А-Яа-яЁё]*\)", "\x00", t)  # (Brahm), (PAUSANIAS, Attica): латиница в скобках
     t = re.sub(r"(?:\b[A-Za-z][\w'’.\-]*[,.;]?\s+){2,}[A-Za-z][\w'’.\-]*", "\x00", t)  # три и больше латинских слов подряд
     t = re.sub(r"\s+([,.;:!?])", r"\1", re.sub(r"\s{2,}", " ", t)).strip()
@@ -248,7 +302,8 @@ def speak(text, fixes=()):
     if re.search(r"\w[»”\"')]*$", t):
         t += ","                                                        # оборванный кусок (и после закрывающей кавычки): пауза, а не обрыв
     for word, repl in fixes:
-        t = re.sub(rf"(?<!\w){re.escape(word)}(?!\w)", lambda m: repl, t)
+        if not re.search(r"[A-Za-z]", word):
+            t = re.sub(rf"(?<!\w){re.escape(word)}(?!\w)", lambda m: repl, t)
     return t
 
 

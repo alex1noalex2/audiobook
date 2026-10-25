@@ -263,8 +263,8 @@ def main():
             sys.exit("Нужен Silero Stress: pip install silero-stress")
         accentor = load_accentor()
 
-    chunks = b.chunk([(r, b.clean(t, False)) for r, t in b.read_book(args.book)], args.max_chars)
-    fixes = b.load_fixes(args.fixes or args.book.with_name("fixes.txt"))
+    chunks, _ = b.book_chunks(args.book, args.max_chars)
+    fixes = b.fixes_for(args.book, args.fixes)
     if args.questions:
         ask = [i for i, (r, t) in enumerate(chunks) if r == b.MAIN and t.rstrip().endswith("?") and 60 <= len(t) <= 300]
         passages = [(ask[j * len(ask) // args.questions], ask[j * len(ask) // args.questions] + 1) for j in range(args.questions)]
