@@ -27,9 +27,12 @@ def ref_text(ref):
 def engine_chatterbox(args):
     import numpy as np
     from chatterbox.mtl_tts import ChatterboxMultilingualTTS
+    import perth
+    if perth.PerthImplicitWatermarker is None:                         # метка происхождения аудио не загрузилась без setuptools
+        sys.exit("Chatterbox не нашёл модуль perth: поставьте «setuptools<81» в то же окружение (uv pip install ... \"setuptools<81\")")
     try:
         model = ChatterboxMultilingualTTS.from_pretrained(device="cuda", t3_model="v3")
-    except TypeError:                                                  # более ранняя версия пакета
+    except TypeError:                                                  # более ранняя версия пакета (0.1.7) без выбора t3_model
         model = ChatterboxMultilingualTTS.from_pretrained(device="cuda")
 
     def generate(text):

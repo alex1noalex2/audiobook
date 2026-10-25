@@ -117,7 +117,7 @@ Colab free: сессия ~2–5,5 ч, потом лимит T4 восстана�
 `local/engines_test.py` озвучивает один и тот же отрывок вашим голосом движками chatterbox (MIT, выразительность `--exaggeration`),
 voxcpm2 (Apache-2.0), qwen3 (Apache-2.0) и печатает скорость и (с `--check`) сходство с текстом. В Colab (Python 3.13) им нужен
 свой Python: `pip install uv`, `uv venv --python 3.12 /content/venv` (для chatterbox 3.11), `uv pip install --python /content/venv/bin/python <пакет> numpy soundfile pymorphy3 pymorphy3-dicts-ru num2words pypdf`.
-Пакеты: `chatterbox-tts`, `voxcpm`, `qwen-tts`. Знака «+» у них нет. Не проверено на слух: русский у всех трёх заявлен в документации, не нами.
+Пакеты: `chatterbox-tts` (+ `"setuptools<81"`, иначе падает `perth.PerthImplicitWatermarker`), `voxcpm`, `qwen-tts`. Знака «+» у них нет. Не проверено на слух: русский у всех трёх заявлен в документации, не нами.
 
 ## 5. Как улучшать качество (цикл)
 
