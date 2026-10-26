@@ -47,6 +47,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("book", type=Path)
     ap.add_argument("--ref", required=True, help="WAV основного голоса; рядом .txt с текстом записи")
+    ap.add_argument("--ref-lia", help="WAV второго голоса (женского) для абзацев после метки из <книга>.voices.txt; рядом .txt")
     ap.add_argument("--out", type=Path, help="папка для кусков (по умолчанию <книга>_audio рядом с книгой)")
     ap.add_argument("--max-chars", type=int, default=400)
     ap.add_argument("--steps", type=int, default=32)
@@ -77,8 +78,11 @@ def main():
         sys.exit("В файле нет текста (возможно, это скан)")
     print(f"Книга: {sum(len(t) for _, t in chunks)} символов, {len(chunks)} кусков"
           + (f" (убрана повторная копия раздела: {dropped} кусков)" if dropped else ""))
-    refs = [args.ref]
-    b.ref_text_file(args.ref)
+    refs = [args.ref] + ([args.ref_lia] if args.ref_lia else [])
+    for r in refs:
+        b.ref_text_file(r)
+    if any(r == b.LIA for r, _ in chunks) and not args.ref_lia:
+        sys.exit("В книге есть абзацы второго голоса (<книга>.voices.txt): укажите --ref-lia образец_женского_голоса.wav")
     out_dir = args.out or args.book.with_name(args.book.stem + "_audio")
     out_dir.mkdir(parents=True, exist_ok=True)
     if not args.questions:                                                # проба вопросов ничего не оставляет, кроме mp3
@@ -101,11 +105,12 @@ def main():
     for _, t in chunks:
         s = b.speak(t, fixes)
         texts.append(ru_text.plus_stress(accentor(s)) if re.search(r"[А-Яа-яЁё]", s) else s)
-    is_q = [r == b.MAIN and t.rstrip().endswith("?") for r, t in chunks]
+    is_q = [r in (b.MAIN, b.LIA) and t.rstrip().endswith("?") for r, t in chunks]
 
     voice, generate, reseed = bench.engine_f5(SimpleNamespace(f5_repo=args.f5_repo, f5_model=args.f5_model,
                                                               f5_vocab=args.f5_vocab), accentor)
     main_vp = voice(args.ref, "plus")
+    lia_vp = voice(args.ref_lia, "plus") if args.ref_lia else main_vp
     transcribe = verify.load_asr(args.asr_model) if args.tries > 1 else None
     bench.RUN["seed"], bench.RUN["tail"] = None, args.redo_weak
 
@@ -114,7 +119,7 @@ def main():
         best = None
         for n in range(args.tries):
             reseed(n)
-            audio, sr = generate([texts[i]], [main_vp], args.steps, args.speed)[0]
+            audio, sr = generate([texts[i]], [lia_vp if chunks[i][0] == b.LIA else main_vp], args.steps, args.speed)[0]
             score = verify.similarity(texts[i], transcribe(audio, sr)) if transcribe else 1.0
             if best is None or score > best[0]:
                 best = (score, audio, sr, n + 1)

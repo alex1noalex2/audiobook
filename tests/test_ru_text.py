@@ -113,6 +113,16 @@ class RuText(unittest.TestCase):
             os.utime(base.with_name("kniga_часть01.mp3"), (old, old))            # часть от прошлой озвучки: старее кусков
             self.assertEqual(b.join(out, base, 2, 2), [0])
 
+    def test_speakers_switch_at_author_marks(self):
+        items = [(b.MAIN, "Вступление."), (b.SIDE, "Лия"), (b.MAIN, "Я услышала."), (b.SIDE, "ГЛАВА 2"), (b.MAIN, "Мы поехали."),
+                 (b.SIDE, "Хао"), (b.MAIN, "Я решил.")]
+        rules = {"Лия": b.LIA, "Хао": b.MAIN}
+        out = [r for r, _ in b.assign_speakers(items, rules)]
+        self.assertEqual(out, [b.MAIN, b.SIDE, b.LIA, b.SIDE, b.LIA, b.SIDE, b.MAIN])      # заголовки и метки — диктор, главу не сбрасывает
+        self.assertEqual(b.assign_speakers(items, {}), items)                               # без правил книга не меняется
+        chunks = b.chunk([(b.LIA, "Кто здесь? Я иду.")], 400, end_on_question=True)
+        self.assertEqual([t for _, t in chunks], ["Кто здесь?", "Я иду."])                  # вопрос заканчивает кусок и у второго голоса
+
 
 if __name__ == "__main__":
     unittest.main()

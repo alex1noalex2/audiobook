@@ -50,9 +50,10 @@ def timecode_lines(chunks, base, audio, part=100):
         for i, x in zip(ids, w):
             starts[i] = start
             start += x * k
+    markers = set(b.load_speakers(base.with_suffix(".voices.txt")))        # «Хао», «Лия» — метки голоса, не главы
     lines = []
     for i, (role, text) in enumerate(chunks):
-        if role == b.SIDE and len(text) <= 150 and (i + 1 == len(chunks) or chunks[i + 1][0] == b.MAIN):
+        if role == b.SIDE and len(text) <= 150 and text.strip() not in markers and (i + 1 == len(chunks) or chunks[i + 1][0] != b.SIDE):
             lines.append(f"{stamp(starts[i])} {text.rstrip('.').strip()}")
     return lines, start, starts
 

@@ -231,6 +231,7 @@ def main():
     ap.add_argument("book", type=Path)
     ap.add_argument("--ref", required=True, help="WAV основного голоса; рядом лежит .txt с текстом записи")
     ap.add_argument("--ref2", help="WAV второго голоса (заголовки и примечания)")
+    ap.add_argument("--ref-lia", help="WAV женского голоса для абзацев после метки из <книга>.voices.txt")
     ap.add_argument("--out", type=Path, default=Path("bench"))
     ap.add_argument("--at", type=float, nargs="+", default=[0.25, 0.5, 0.75], help="доли книги, где брать отрывки")
     ap.add_argument("--words", type=int, default=200, help="слов в отрывке")
@@ -302,6 +303,8 @@ def main():
             vps = []
             for i in ids:
                 ref = args.ref2 if chunks[i][0] == b.SIDE and args.ref2 and not v["phone"] else args.ref
+                if chunks[i][0] == b.LIA and args.ref_lia:
+                    ref = args.ref_lia
                 vps.append(voice(ref, "caps" if v["capsref"] else "plus" if v["plusref"] else None))
             parts, report = [], ""
             if v["tries"] > 1:

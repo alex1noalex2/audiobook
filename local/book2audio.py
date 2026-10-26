@@ -25,6 +25,7 @@ import ru_text  # noqa: E402
 
 MODEL = "mlx-community/OmniVoice-bf16"
 MAIN, SIDE = "main", "side"          # основной голос / второй (заголовки, оглавление, примечания)
+LIA = "lia"                          # третий: автор-женщина, если книга написана двумя авторами (правила <книга>.voices.txt)
 HEADINGS = {"h1", "h2", "h3", "h4", "h5", "h6"}
 
 
@@ -189,7 +190,7 @@ def chunk(items, max_chars, end_on_question=False):
                     chunks.append((role, cur))
                     cur = ""
                 cur = f"{cur} {sent}".strip()
-                if end_on_question and role == MAIN and sent.endswith("?"):
+                if end_on_question and role in (MAIN, LIA) and sent.endswith("?"):
                     chunks.append((role, cur))
                     cur = ""
     if cur:
@@ -242,6 +243,30 @@ def join_soft_hyphens(items, min_count=200):
     return [(r, HYPHEN_WORD.sub(lambda m: m[1] + m[2] if broken(m) else m[0], t)) for r, t in items], count
 
 
+def load_speakers(path):
+    """<книга>.voices.txt: «Лия = lia», «Хао = main» — абзац, состоящий только из этого слова, переключает голос основного текста."""
+    rules = {}
+    if Path(path).exists():
+        for line in Path(path).read_text(encoding="utf-8").splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                name, role = (x.strip() for x in line.split("=", 1))
+                if name and role in (MAIN, LIA):
+                    rules[name] = role
+    return rules
+
+
+def assign_speakers(items, rules):
+    """Основной текст после абзаца-метки («Лия») читает голос этой метки, пока не встретится другая. Метка и заголовки
+    остаются прежнего голоса (диктор). До первой метки читает основной голос."""
+    if not rules:
+        return items
+    out, current = [], MAIN
+    for role, text in items:
+        current = rules.get(text.strip(), current)
+        out.append((current if role == MAIN else role, text))
+    return out
+
+
 def drop_matching(chunks, rules):
     """Убирает куски по правилам: строка = любой кусок, где она встречается; «=строка» — кусок целиком равен строке."""
     def hit(text):
@@ -256,6 +281,7 @@ def book_chunks(path, max_chars=400):
     -> (куски, сколько кусков убрано)"""
     path = Path(path)
     items, _ = join_soft_hyphens([(r, clean(t, False)) for r, t in read_book(path)])
+    items = assign_speakers(items, load_speakers(path.with_suffix(".voices.txt")))
     chunks, dropped = drop_repeats(chunk(items, max_chars, end_on_question=True))
     rules = path.with_suffix(".drop.txt")
     if rules.exists():
