@@ -49,8 +49,10 @@ def engine_voxcpm2(args):
     text = ref_text(args.ref)
 
     def generate(t):
+        if args.style:                                                  # стиль в скобках перед текстом: «(тёплый, выразительный голос)»
+            t = f"({args.style}){t}"
         wav = model.generate(text=t, prompt_wav_path=str(args.ref), prompt_text=text, reference_wav_path=str(args.ref),
-                             cfg_value=2.0, inference_timesteps=10)
+                             cfg_value=args.voxcpm_cfg, inference_timesteps=10)
         return np.asarray(wav, dtype=np.float32), model.tts_model.sample_rate
     return generate
 
@@ -101,6 +103,8 @@ def main():
     ap.add_argument("--accent", choices=["none", "acute"], default="none", help="acute: ударение знаком над гласной (Silero Stress)")
     ap.add_argument("--exaggeration", type=float, default=0.6, help="chatterbox: выразительность 0–1")
     ap.add_argument("--cfg", type=float, default=0.3, help="chatterbox: cfg_weight (меньше — живее и быстрее темп)")
+    ap.add_argument("--style", default="", help="voxcpm2: описание стиля речи, например «тёплый, выразительный голос диктора»")
+    ap.add_argument("--voxcpm-cfg", type=float, default=2.0, help="voxcpm2: cfg_value (выше — точнее по тексту и голосу, ниже — свободнее)")
     ap.add_argument("--check", action="store_true", help="сверить озвучку с текстом распознаванием речи (GigaAM)")
     ap.add_argument("--asr-model", default="gigaam-v3-e2e-rnnt")
     ap.add_argument("--fixes", type=Path)
