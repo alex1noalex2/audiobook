@@ -42,18 +42,42 @@ def engine_chatterbox(args):
     return generate
 
 
+def voxcpm_dtype(name):
+    """VoxCPM2 берёт dtype из config.json (bfloat16). У T4 нет родного bfloat16 — он медленный как черепаха: правим config.json в кэше."""
+    import json
+    import torch
+    from huggingface_hub import snapshot_download
+    path = Path(snapshot_download("openbmb/VoxCPM2"))
+    if name == "auto":
+        name = "float16" if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] < 8 else "bfloat16"
+    cfg = path / "config.json"
+    data = json.loads(cfg.read_text(encoding="utf-8"))
+    if data.get("dtype") != name:
+        data["dtype"] = name
+        cfg.unlink()                                                       # в кэше это ссылка на общий файл: заменяем своим
+        cfg.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"VoxCPM2: dtype {name}", flush=True)
+
+
 def engine_voxcpm2(args):
     import numpy as np
     from voxcpm import VoxCPM
+    voxcpm_dtype(args.voxcpm_dtype)
+    t0 = time.time()
     model = VoxCPM.from_pretrained("openbmb/VoxCPM2", load_denoiser=False, optimize=False)   # без torch.compile: на T4 прогрев занимает минуты
+    print(f"модель загружена за {time.time() - t0:.0f} с", flush=True)
     text = ref_text(args.ref)
 
     def generate(t):
-        if args.style:                                                  # стиль в скобках перед текстом: «(тёплый, выразительный голос)»
+        if args.style:                                                  # стиль в скобках перед текстом: «(тёплый, выразительный голос диктора)»
             t = f"({args.style}){t}"
         wav = model.generate(text=t, prompt_wav_path=str(args.ref), prompt_text=text, reference_wav_path=str(args.ref),
                              cfg_value=args.voxcpm_cfg, inference_timesteps=10)
         return np.asarray(wav, dtype=np.float32), model.tts_model.sample_rate
+
+    t0 = time.time()
+    generate("Проверка связи.")                                         # короткая проба: видно, что модель вообще говорит и как быстро
+    print(f"прогревочная фраза: {time.time() - t0:.0f} с", flush=True)
     return generate
 
 
@@ -104,6 +128,8 @@ def main():
     ap.add_argument("--exaggeration", type=float, default=0.6, help="chatterbox: выразительность 0–1")
     ap.add_argument("--cfg", type=float, default=0.3, help="chatterbox: cfg_weight (меньше — живее и быстрее темп)")
     ap.add_argument("--style", default="", help="voxcpm2: описание стиля речи, например «тёплый, выразительный голос диктора»")
+    ap.add_argument("--voxcpm-dtype", default="auto", choices=["auto", "float16", "bfloat16", "float32"],
+                    help="voxcpm2: auto — float16 на видеокартах без bfloat16 (T4), иначе bfloat16")
     ap.add_argument("--voxcpm-cfg", type=float, default=2.0, help="voxcpm2: cfg_value (выше — точнее по тексту и голосу, ниже — свободнее)")
     ap.add_argument("--check", action="store_true", help="сверить озвучку с текстом распознаванием речи (GigaAM)")
     ap.add_argument("--asr-model", default="gigaam-v3-e2e-rnnt")
