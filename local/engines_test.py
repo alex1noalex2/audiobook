@@ -45,7 +45,7 @@ def engine_chatterbox(args):
 def engine_voxcpm2(args):
     import numpy as np
     from voxcpm import VoxCPM
-    model = VoxCPM.from_pretrained("openbmb/VoxCPM2", load_denoiser=False)
+    model = VoxCPM.from_pretrained("openbmb/VoxCPM2", load_denoiser=False, optimize=False)   # без torch.compile: на T4 прогрев занимает минуты
     text = ref_text(args.ref)
 
     def generate(t):
@@ -130,6 +130,7 @@ def main():
             t0 = time.time()
             wav, sr = generate(text)
             spent += time.time() - t0
+            print(f"  кусок {i - s + 1}/{e - s}: {len(wav) / sr:.0f} с звука за {time.time() - t0:.0f} с", flush=True)
             audio_s += len(wav) / sr
             if transcribe:
                 scores.append(verify.similarity(text, transcribe(wav, sr)))
